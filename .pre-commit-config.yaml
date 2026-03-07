@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 cs-26-sw-6-04 <cs-26-sw-6-04@student.aau.dk>
+#
+# SPDX-License-Identifier: 0BSD
+
+default_install_hook_types: [pre-commit]
+repos:
+  - repo: local
+    hooks:
+      - id: reuse
+        name: reuse
+        entry: reuse
+        args: [lint-file]
+        language: system
+        stages: [pre-commit]

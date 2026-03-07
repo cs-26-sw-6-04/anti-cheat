@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 cs-26-sw-6-04 <cs-26-sw-6-04@student.aau.dk>
+#
+# SPDX-License-Identifier: 0BSD
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# Cancel in-flight runs for the same branch on new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            clang \
+            llvm \
+            libbpf-dev \
+            cmake \
+            pkg-config \
+            libelf-dev \
+            zlib1g-dev
+
+      - name: Install bpftool
+        env:
+          BPFTOOL_VERSION: v7.6.0
+        run: |
+          curl -fsSL \
+            "https://github.com/libbpf/bpftool/releases/download/${BPFTOOL_VERSION}/bpftool-${BPFTOOL_VERSION}-amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin
+          sudo chmod +x /usr/local/bin/bpftool
+          which bpftool
+          bpftool version
+
+      - name: Configure
+        run: cmake --preset debug
+
+      - name: Build
+        run: cmake --build --preset debug --parallel
+
+      #- name: Upload build artifacts
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: ac-bpf-${{ matrix.os }}
+      #    path: build/debug/loader/ac-loader
+      #    if-no-files-found: error
