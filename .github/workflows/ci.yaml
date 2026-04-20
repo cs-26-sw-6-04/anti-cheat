@@ -62,8 +62,5 @@ jobs:
       - name: Build
         run: cmake --build --preset conan-release --parallel
 
-      - name: Run test suite
-        run: ctest --preset conan-release
-
-      - name: Run live BPF integration tests
+      - name: Test
         run: sudo ctest --preset conan-release --output-on-failure
