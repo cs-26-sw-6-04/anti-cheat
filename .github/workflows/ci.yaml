@@ -17,12 +17,13 @@ concurrency:
 
 jobs:
   build:
-    name: ${{matrix.preset}} (${{ matrix.os }})
+    name: ${{ matrix.build_type }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-25.10]
+        preset: [conan-debug, conan-release]
         include:
           - preset: conan-debug
             build_type: Debug
@@ -34,14 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jdx/mise-action@v3
-        with:
-          install: true
-
       - name: Configure
         run: |
-          mise x -- conan profile detect --force
-          mise x -- conan install . -s build_type=${{ matrix.build_type }} --build=missing
+          mise exec -- conan profile detect --force
+          mise exec -- conan install . -s build_type=${{ matrix.build_type }} --build=missing
           cmake --preset ${{ matrix.preset }}
 
       - name: Build
