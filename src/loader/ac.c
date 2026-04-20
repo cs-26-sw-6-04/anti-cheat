@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -23,6 +24,35 @@ static int libbpf_print(enum libbpf_print_level level, const char *fmt,
   if (level == LIBBPF_DEBUG)
     return 0;
   return vfprintf(stderr, fmt, args);
+}
+
+/* Our enforcers are SEC("lsm/..."). The kernel happily loads and attaches
+ * them even when BPF LSM is compiled in but not in the active lsm= stack;
+ * the hooks then never run and every attack silently succeeds. Fail loudly
+ * instead of pretending to protect. */
+static int require_bpf_lsm_active(void) {
+  FILE *f = fopen("/sys/kernel/security/lsm", "re");
+  if (!f) {
+    fprintf(stderr,
+            "ac: cannot open /sys/kernel/security/lsm (%s); BPF LSM status "
+            "unknown — refusing to attach silently.\n",
+            strerror(errno));
+    return -EOPNOTSUPP;
+  }
+  char buf[512] = {0};
+  size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+  fclose(f);
+  buf[n] = '\0';
+
+  for (char *tok = strtok(buf, ",\n"); tok; tok = strtok(NULL, ",\n")) {
+    if (strcmp(tok, "bpf") == 0)
+      return 0;
+  }
+  fprintf(stderr,
+          "ac: BPF LSM is not in the active LSM stack. Enforcers would load "
+          "but never run. Boot with lsm=...,bpf (e.g. append to GRUB_CMDLINE) "
+          "and reboot.\n");
+  return -EOPNOTSUPP;
 }
 
 static int on_event(void *ctx, void *data, size_t size) {
@@ -41,6 +71,10 @@ int ac_open(struct ac_session **out) {
     return -EINVAL;
 
   libbpf_set_print(libbpf_print);
+
+  int lsm_err = require_bpf_lsm_active();
+  if (lsm_err)
+    return lsm_err;
 
   struct rlimit rl = {RLIM_INFINITY, RLIM_INFINITY};
   (void)setrlimit(RLIMIT_MEMLOCK, &rl);

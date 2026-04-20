@@ -8,6 +8,18 @@ set(BPF_INCLUDE_DIRS
     ${LIBBPF_INCLUDE_DIRS}
 )
 
+# Debian/Ubuntu ship asm/ under a multiarch path that clang -target bpf does
+# not search by default; <linux/errno.h> then fails to find <asm/errno.h>.
+execute_process(
+    COMMAND ${CMAKE_C_COMPILER} -print-multiarch
+    OUTPUT_VARIABLE _bpf_multiarch
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(_bpf_multiarch AND EXISTS "/usr/include/${_bpf_multiarch}")
+  list(APPEND BPF_INCLUDE_DIRS "/usr/include/${_bpf_multiarch}")
+endif()
+
 set(BPF_DEFINES "")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   list(APPEND BPF_DEFINES AC_DEBUG_BUILD)
