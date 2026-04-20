@@ -34,6 +34,9 @@ jobs:
             pipx \
             clang \
             llvm \
+            gcc-15 \
+            g++-15 \
+            libstdc++-15-dev \
             libbpf-dev \
             cmake \
             pkg-config \
