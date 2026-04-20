@@ -61,5 +61,7 @@ dkms.conf
 # build folders
 build
 cmake-build
+.conan2
+CMakeUserPresets.json
 
 compile_commands.json

@@ -26,6 +26,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
 
       - name: Install dependencies
         run: |
@@ -51,14 +54,16 @@ jobs:
           bpftool version
 
       - name: Configure
-        run: cmake --preset debug
+        run: |
+          mise x -- conan profile detect --force
+          mise x -- conan install . -s build_type=Release --build=missing
+          cmake --preset conan-release
 
       - name: Build
-        run: cmake --build --preset debug --parallel
+        run: cmake --build --preset conan-release --parallel
 
-      #- name: Upload build artifacts
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: ac-bpf-${{ matrix.os }}
-      #    path: build/debug/loader/ac-loader
-      #    if-no-files-found: error
+      - name: Run test suite
+        run: ctest --preset conan-release
+
+      - name: Run live BPF integration tests
+        run: sudo ctest --preset conan-release --output-on-failure

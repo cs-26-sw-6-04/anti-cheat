@@ -3,4 +3,4 @@
 # SPDX-License-Identifier: 0BSD
 
 CompileFlags:
-  CompilationDatabase: build/debug
+  CompilationDatabase: build/debug-conan

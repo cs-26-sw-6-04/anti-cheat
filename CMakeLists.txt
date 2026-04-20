@@ -48,11 +48,16 @@ find_package(VmlinuxH REQUIRED) # For CO-RE
 
 # --- CMake Modules ---
 include(BpfCompile)
+include(CTest)
 
 # --- Status ---
 message(STATUS "clang         : ${CLANG_EXECUTABLE}")
 message(STATUS "bpftool       : ${BPFTOOL_EXECUTABLE}")
 message(STATUS "CO-RE support : ${VmlinuxH_FOUND}")
 
-add_subdirectory(bpf)
-add_subdirectory(loader)
+add_subdirectory(src)
+
+if(BUILD_TESTING)
+  enable_language(CXX)
+  add_subdirectory(tests)
+endif()
