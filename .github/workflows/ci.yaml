@@ -29,39 +29,14 @@ jobs:
           - preset: conan-release
             build_type: Release
 
+    # System dependencies (apt packages, bpftool, kernel BPF LSM) are
+    # provisioned on the self-hosted runner VM out-of-band. See docs/ci.md.
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y \
-            pipx \
-            clang \
-            llvm \
-            gcc-15 \
-            g++-15 \
-            libstdc++-15-dev \
-            libbpf-dev \
-            cmake \
-            pkg-config \
-            libelf-dev \
-            zlib1g-dev
 
       - uses: jdx/mise-action@v3
         with:
           install: true
-
-      - name: Install bpftool
-        env:
-          BPFTOOL_VERSION: v7.6.0
-        run: |
-          curl -fsSL \
-            "https://github.com/libbpf/bpftool/releases/download/${BPFTOOL_VERSION}/bpftool-${BPFTOOL_VERSION}-amd64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin
-          sudo chmod +x /usr/local/bin/bpftool
-          which bpftool
-          bpftool version
 
       - name: Configure
         run: |
