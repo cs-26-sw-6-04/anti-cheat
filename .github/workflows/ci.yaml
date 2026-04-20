@@ -26,14 +26,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v3
-        with:
-          install: true
 
       - name: Install dependencies
         run: |
           sudo apt-get update -q
           sudo apt-get install -y \
+            pipx \
             clang \
             llvm \
             libbpf-dev \
@@ -41,6 +39,10 @@ jobs:
             pkg-config \
             libelf-dev \
             zlib1g-dev
+
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
 
       - name: Install bpftool
         env:
