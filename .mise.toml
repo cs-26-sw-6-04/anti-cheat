@@ -2,5 +2,8 @@
 #
 # SPDX-License-Identifier: 0BSD
 
-CompileFlags:
-  CompilationDatabase: build/debug-conan
+[env]
+CONAN_HOME = "{{ config_root }}/.conan2"
+
+[tools]
+"pipx:conan" = "2.26.2"
