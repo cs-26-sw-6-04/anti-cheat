@@ -17,12 +17,17 @@ concurrency:
 
 jobs:
   build:
-    name: build (${{ matrix.os }})
+    name: ${{matrix.preset}} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-25.10]
+        include:
+          - preset: conan-debug
+            build_type: Debug
+          - preset: conan-release
+            build_type: Release
 
     steps:
       - uses: actions/checkout@v4
@@ -61,11 +66,11 @@ jobs:
       - name: Configure
         run: |
           mise x -- conan profile detect --force
-          mise x -- conan install . -s build_type=Release --build=missing
-          cmake --preset conan-release
+          mise x -- conan install . -s build_type=${{ matrix.build_type }} --build=missing
+          cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build --preset conan-release --parallel
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
 
       - name: Test
-        run: sudo ctest --preset conan-release --output-on-failure
+        run: sudo ctest --preset ${{ matrix.preset }} --output-on-failure
