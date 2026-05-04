@@ -50,22 +50,50 @@ struct ac_session;
 
 /* Open an enforcement session.
  *
- * `protected_root_pid` declares the subtree the memory/ptrace enforcers guard.
- * The caller must already have spawned the protected root and must be its
- * parent; the pid is burned into BPF rodata at skeleton load so hostile root
- * cannot shift enforcement onto a different target after attach. Pass 0 to
- * run with selfprotect only (no subtree enforcement) — useful for tests and
- * diagnostic sessions.
+ * `protected_root_pid` declares the subtree the memory enforcer guards. The
+ * caller must already have spawned the protected root and must be its parent;
+ * the pid is burned into BPF rodata at skeleton load so hostile root cannot
+ * shift enforcement onto a different target after attach. Pass 0 to run with
+ * selfprotect only (no subtree enforcement) — useful for tests and diagnostic
+ * sessions. The caller's own pid is rejected (-EINVAL): selfprotect already
+ * covers it, and registering it as the subtree root would collide attribution
+ * between the two enforcers on the same victim.
  *
- * To eliminate the spawn→attach race, the caller should hold the protected
- * root stopped (SIGSTOP, ptrace, or a startup barrier) across this call and
- * resume it only after ac_open returns 0. To bind the protected root's life
- * to the loader's (see SCOPE.md, "Residual Weaknesses"), the protected root
- * should call prctl(PR_SET_PDEATHSIG, SIGKILL) on itself before ac_open, and
- * the loader should set PR_SET_CHILD_SUBREAPER so reparented descendants
- * remain in the loader's subtree. */
+ * Most production callers should prefer `ac_spawn_and_protect`, which owns
+ * the spawn → attach orchestration (PR_SET_PDEATHSIG, PR_SET_CHILD_SUBREAPER,
+ * the startup barrier) instead of leaving each loader to reimplement the
+ * sequence. Use ac_open directly only when you already hold a child stopped
+ * by other means (e.g., ptrace) or you know the protected root has not yet
+ * begun executing attackable code. */
 int ac_open(struct ac_session **out, __u32 protected_root_pid);
 void ac_close(struct ac_session *session);
+
+typedef int (*ac_protected_main_fn)(void *user_data);
+
+/* Spawn a process running `child_main(user_data)` and attach BPF enforcement
+ * with that process as the protected subtree root. Closes the spawn → attach
+ * race via an internal pipe barrier: the child does not begin executing
+ * `child_main` until the BPF programs are loaded and attached.
+ *
+ * Sequence the function performs on the caller's behalf, in order:
+ *   1. PR_SET_CHILD_SUBREAPER on the loader so reparented descendants of the
+ *      subtree stay reachable for the ancestor walk.
+ *   2. fork().
+ *   3. Child sets PR_SET_PDEATHSIG(SIGKILL) before doing anything else, so
+ *      loader death tears the subtree down (see SCOPE.md "Residual
+ *      Weaknesses").
+ *   4. Child blocks on the barrier read.
+ *   5. Parent calls ac_open with the child's pid as the subtree root.
+ *   6. On success, parent releases the barrier; child runs `child_main`.
+ *      On failure, parent closes the barrier write end (child gets EOF and
+ *      exits) and reaps it before returning the error.
+ *
+ * On success `*out` is a live session, `*out_pid` (if non-null) receives the
+ * protected root's pid, and the caller is responsible for `ac_close` and for
+ * waiting on / signalling the child. On failure no session is left open and
+ * no child is left orphaned. Return values match ac_open. */
+int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
+                         ac_protected_main_fn child_main, void *user_data);
 
 int ac_poll(struct ac_session *session, int timeout_ms);
 int ac_next_event(struct ac_session *session, struct ac_event *out);

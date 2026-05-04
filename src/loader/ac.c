@@ -13,10 +13,13 @@
 #include <bpf/libbpf.h>
 
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static int libbpf_print(enum libbpf_print_level level, const char *fmt,
@@ -68,6 +71,11 @@ static int on_event(void *ctx, void *data, size_t size) {
 
 int ac_open(struct ac_session **out, __u32 protected_root_pid) {
   if (!out)
+    return -EINVAL;
+  /* Loader is its own selfprotect domain; protecting it as the subtree root
+   * collides with selfprotect on the same victim and breaks attribution. The
+   * caller almost certainly meant to pass a child's pid. */
+  if (protected_root_pid != 0 && protected_root_pid == (__u32)getpid())
     return -EINVAL;
 
   libbpf_set_print(libbpf_print);
@@ -143,5 +151,87 @@ int ac_next_event(struct ac_session *s, struct ac_event *out) {
     return -EAGAIN;
   *out = s->next;
   s->has_next = 0;
+  return 0;
+}
+
+int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
+                         ac_protected_main_fn child_main, void *user_data) {
+  if (!out || !child_main)
+    return -EINVAL;
+
+  /* Set subreaper before fork so the child (and any of its descendants that
+   * outlive intermediate parents) is guaranteed to reparent into us, keeping
+   * the BPF ancestor walk from escaping the subtree. Idempotent. */
+  (void)prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+
+  int barrier[2];
+  if (pipe(barrier) != 0)
+    return errno ? -errno : -EIO;
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    int e = errno;
+    close(barrier[0]);
+    close(barrier[1]);
+    return -e;
+  }
+
+  if (pid == 0) {
+    /* Bind life to the loader BEFORE running anything else. If the loader is
+     * already gone here, the kernel delivers SIGKILL on the next signal-check
+     * boundary and we never reach child_main. */
+    (void)prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+    close(barrier[1]);
+
+    /* Block until the parent finishes ac_open. A successful 1-byte read means
+     * enforcement is live; EOF means attach failed and we exit cleanly. */
+    char b;
+    ssize_t r;
+    do {
+      r = read(barrier[0], &b, 1);
+    } while (r < 0 && errno == EINTR);
+    close(barrier[0]);
+    if (r != 1)
+      _exit(127);
+
+    int rc = child_main(user_data);
+    _exit(rc & 0xff);
+  }
+
+  /* Parent. */
+  close(barrier[0]);
+
+  int err = ac_open(out, (__u32)pid);
+  if (err) {
+    /* Closing the write end without a release byte gives the child EOF; it
+     * exits 127 on the r != 1 path. Reap it so the caller never has to. */
+    close(barrier[1]);
+    int status;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+    return err;
+  }
+
+  /* Release the child. */
+  ssize_t w;
+  do {
+    w = write(barrier[1], "x", 1);
+  } while (w < 0 && errno == EINTR);
+  int werr = (w == 1) ? 0 : (errno ? -errno : -EIO);
+  close(barrier[1]);
+
+  if (werr) {
+    /* Child died between fork and release (e.g. PR_SET_PDEATHSIG fired) —
+     * unwind cleanly so callers never see a half-built session. */
+    ac_close(*out);
+    *out = NULL;
+    int status;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+    return werr;
+  }
+
+  if (out_pid)
+    *out_pid = (__u32)pid;
   return 0;
 }
