@@ -27,6 +27,9 @@ int BPF_PROG(ptrace_enforce, struct task_struct *child, unsigned int mode,
   if (!policy || !(*policy & AC_POLICY_BLOCK_PTRACE))
     return 0;
 
+  if (bpf_map_lookup_elem(&whitelist_pids, &me))
+    return 0;
+
   emit_deny(AC_ENF_PTRACE, me, victim);
   return -EPERM;
 }
