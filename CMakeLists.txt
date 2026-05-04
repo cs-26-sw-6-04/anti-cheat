@@ -56,6 +56,7 @@ message(STATUS "bpftool       : ${BPFTOOL_EXECUTABLE}")
 message(STATUS "CO-RE support : ${VmlinuxH_FOUND}")
 
 add_subdirectory(src)
+add_subdirectory(bin)
 
 if(BUILD_TESTING)
   enable_language(CXX)
