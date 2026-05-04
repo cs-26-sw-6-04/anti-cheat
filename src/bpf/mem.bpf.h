@@ -21,8 +21,7 @@ int BPF_PROG(mem_enforce, struct task_struct *child, unsigned int mode,
   if (me == victim)
     return 0;
 
-  __u32 *policy = bpf_map_lookup_elem(&protected_pids, &victim);
-  if (!policy || !(*policy & AC_POLICY_BLOCK_MEMORY))
+  if (!is_in_protected_subtree(child))
     return 0;
 
   emit_deny(AC_ENF_MEMORY, me, victim);

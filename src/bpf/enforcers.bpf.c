@@ -8,15 +8,16 @@
  * it here. BPF cannot cleanly share maps across object files linked with
  * bpftool gen object, so all enforcers live in one TU.
  *
- * Attach order (more-specific-first): selfprotect → ptrace → memory.
- * LSM chain "deny wins": an earlier -EPERM short-circuits the remaining
- * programs, so overlapping policy bits produce exactly one event.
+ * Enforcers split by DOMAIN (who the victim is), not by operation kind:
+ *   - selfprotect: victim == ac_self_pid (loader itself).
+ *   - mem:         victim in the ac_protected_root_pid subtree.
+ * Domains are disjoint (mem explicitly skips ac_self_pid via its walk), so
+ * attribution does not depend on BPF LSM chain ordering.
  */
 
 #include "common.bpf.h"
 
 #include "selfprotect.bpf.h"
-#include "ptrace.bpf.h"
 #include "mem.bpf.h"
 
 char LICENSE[] SEC("license") = "GPL";

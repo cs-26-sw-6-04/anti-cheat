@@ -33,12 +33,10 @@ public:
   session(session &&) noexcept;
   session &operator=(session &&) noexcept;
 
-  /* Opens a session; Catch2 SKIPs on EPERM/EACCES (e.g., running unprivileged).
-   */
-  static session open_or_skip();
-
-  void protect(__u32 pid, __u32 policy);
-  void unprotect(__u32 pid);
+  /* Opens a session protecting `protected_root_pid` and its descendants
+   * (0 means selfprotect-only). Catch2 SKIPs on EPERM/EACCES (e.g., running
+   * unprivileged). */
+  static session open_or_skip(__u32 protected_root_pid = 0);
 
   std::optional<deny> next_event();
   int poll(int timeout_ms = 100);
@@ -79,12 +77,13 @@ using verify_success_fn = std::function<void(target &, const attack_result &)>;
 struct scenario_spec {
   target_factory target;
   attacker_fn attack;
-  __u32 policy; /* 0 means don't call protect() (e.g., self-protect tests). */
   ac_enforcer expect_enforcer;
   verify_success_fn verify_success;
 };
 
-/* Runs "attack succeeds (no enforcer)" + "protected" passes as Catch2 SECTIONs. */
+/* Runs "attack succeeds (no enforcer)" + "protected" passes as Catch2 SECTIONs.
+ * In the protected SECTION, opens a session with target.info().root_pid as
+ * the subtree to guard. */
 void run_scenario(const scenario_spec &spec);
 
 } // namespace ac

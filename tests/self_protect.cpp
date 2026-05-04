@@ -39,7 +39,6 @@ TEST_CASE("self-protect blocks process_vm_readv against AC loader",
         fflush(stdout);
         return 0;
       },
-      .policy = 0,
       .expect_enforcer = AC_ENF_SELFPROTECT,
       .verify_success =
           [](target &t, const attack_result &r) {
@@ -79,7 +78,6 @@ TEST_CASE("self-protect blocks PTRACE_ATTACH against AC loader",
         fflush(stdout);
         return 0;
       },
-      .policy = 0,
       .expect_enforcer = AC_ENF_SELFPROTECT,
       .verify_success =
           [](target &t, const attack_result &r) {

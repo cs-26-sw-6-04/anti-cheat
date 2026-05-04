@@ -14,6 +14,7 @@
 #include <utility>
 
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -61,6 +62,10 @@ target target::spawn(target_fn fn) {
   }
 
   if (pid == 0) {
+    /* Bind our lifetime to the test harness (which is the loader in these
+     * tests). See SCOPE.md "Residual Weaknesses": loader death drops BPF
+     * enforcement, so the protected subtree must die with it. */
+    (void)prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
     dup2(in_pipe[0], STDIN_FILENO);
     dup2(out_pipe[1], STDOUT_FILENO);
     close(in_pipe[0]);

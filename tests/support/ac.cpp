@@ -36,28 +36,23 @@ session &session::operator=(session &&o) noexcept {
   return *this;
 }
 
-session session::open_or_skip() {
+session session::open_or_skip(__u32 protected_root_pid) {
   /* Allow siblings / children to ptrace us in self-protect scenarios. */
   (void)prctl(PR_SET_PTRACER, static_cast<unsigned long>(-1), 0, 0, 0);
 
+  /* Keep descendants of the test-harness-as-loader reparented within us.
+   * Production loaders should do the equivalent before ac_open; see SCOPE.md.
+   */
+  (void)prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+
   ac_session *s = nullptr;
-  int err = ac_open(&s);
+  int err = ac_open(&s, protected_root_pid);
   if (err == -EPERM || err == -EACCES) {
     SKIP("skipping live BPF test: insufficient privileges: " +
          std::string(std::strerror(-err)));
   }
   REQUIRE(err == 0);
   return session(s);
-}
-
-void session::protect(__u32 pid, __u32 policy) {
-  REQUIRE(s_);
-  REQUIRE(ac_protect(s_, pid, policy) == 0);
-}
-
-void session::unprotect(__u32 pid) {
-  REQUIRE(s_);
-  REQUIRE(ac_unprotect(s_, pid) == 0);
 }
 
 std::optional<deny> session::next_event() {
@@ -121,13 +116,11 @@ void run_scenario(const scenario_spec &spec) {
   }
 
   SECTION("protected") {
-    auto sess = session::open_or_skip();
+    auto t = spec.target();
+    auto sess = session::open_or_skip(t.info().root_pid);
 #ifdef AC_DEBUG_BUILD
     only_enforcer guard(sess, spec.expect_enforcer);
 #endif
-    auto t = spec.target();
-    if (spec.policy != 0)
-      sess.protect(t.info().pid, spec.policy);
 
     auto r = run_attacker(spec.attack, t.info());
     INFO("protected stderr: " << r.stderr);

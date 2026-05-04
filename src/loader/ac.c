@@ -66,7 +66,7 @@ static int on_event(void *ctx, void *data, size_t size) {
   return 0;
 }
 
-int ac_open(struct ac_session **out) {
+int ac_open(struct ac_session **out, __u32 protected_root_pid) {
   if (!out)
     return -EINVAL;
 
@@ -89,8 +89,12 @@ int ac_open(struct ac_session **out) {
     return -errno ? -errno : -EIO;
   }
 
-  /* Burn self pid into rodata before load — verifier-observable constant. */
+  /* Burn both pids into rodata before load. rodata of a loaded program is
+   * immutable from userspace — hostile root cannot redirect enforcement onto
+   * a different self/target after the fact, which is the entire reason the
+   * protected set lives here instead of in a mutable map. */
   s->skel->rodata->ac_self_pid = (__u32)getpid();
+  s->skel->rodata->ac_protected_root_pid = protected_root_pid;
 
   int err = enforcers_bpf__load(s->skel);
   if (err)
@@ -99,12 +103,6 @@ int ac_open(struct ac_session **out) {
   err = enforcers_bpf__attach(s->skel);
   if (err)
     goto fail;
-
-  __u32 self_pid = (__u32)getpid();
-  __u32 self_policy = AC_POLICY_BLOCK_MEMORY | AC_POLICY_BLOCK_PTRACE;
-  (void)bpf_map__update_elem(s->skel->maps.protected_pids, &self_pid,
-                             sizeof(self_pid), &self_policy,
-                             sizeof(self_policy), BPF_ANY);
 
   s->events = ring_buffer__new(bpf_map__fd(s->skel->maps.events), on_event, s,
                                NULL);
@@ -130,23 +128,6 @@ void ac_close(struct ac_session *s) {
   if (s->skel)
     enforcers_bpf__destroy(s->skel);
   free(s);
-}
-
-int ac_protect(struct ac_session *s, __u32 pid, __u32 policy) {
-  if (!s)
-    return -EINVAL;
-  return bpf_map__update_elem(s->skel->maps.protected_pids, &pid, sizeof(pid),
-                              &policy, sizeof(policy), BPF_ANY);
-}
-
-int ac_unprotect(struct ac_session *s, __u32 pid) {
-  if (!s)
-    return -EINVAL;
-  int err = bpf_map__delete_elem(s->skel->maps.protected_pids, &pid,
-                                 sizeof(pid), 0);
-  if (err == -ENOENT)
-    return 0;
-  return err;
 }
 
 int ac_poll(struct ac_session *s, int timeout_ms) {

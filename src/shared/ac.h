@@ -16,16 +16,22 @@ extern "C" {
 
 #define AC_FLAG_SIZE 64
 
+/* Upper bound on task->real_parent walks from the victim during enforcement.
+ * Higher than any realistic process tree depth; hitting it means either a
+ * pathological tree or a hostile nesting attempt to escape protection. */
+#define AC_ANCESTOR_WALK_DEPTH 64
+
 enum ac_enforcer {
   AC_ENF_SELFPROTECT = 1,
+  /* Subtree access enforcer: blocks any process_vm_{read,write}v, ptrace,
+   * and /proc/PID/mem access where the victim is in the protected subtree.
+   *
+   * There is no AC_ENF_PTRACE. The `ptrace_access_check` LSM hook receives
+   * the same mode bits for process_vm_rw and ptrace(PTRACE_ATTACH), so a
+   * reliable attribution split is not possible at this layer. See
+   * docs/testing.md. */
   AC_ENF_MEMORY = 2,
-  AC_ENF_PTRACE = 3,
-  AC_ENF__COUNT = 4,
-};
-
-enum ac_policy {
-  AC_POLICY_BLOCK_MEMORY = 1u << 0,
-  AC_POLICY_BLOCK_PTRACE = 1u << 1,
+  AC_ENF__COUNT = 3,
 };
 
 enum ac_event_kind {
@@ -42,11 +48,24 @@ struct ac_event {
 
 struct ac_session;
 
-int ac_open(struct ac_session **out);
+/* Open an enforcement session.
+ *
+ * `protected_root_pid` declares the subtree the memory/ptrace enforcers guard.
+ * The caller must already have spawned the protected root and must be its
+ * parent; the pid is burned into BPF rodata at skeleton load so hostile root
+ * cannot shift enforcement onto a different target after attach. Pass 0 to
+ * run with selfprotect only (no subtree enforcement) — useful for tests and
+ * diagnostic sessions.
+ *
+ * To eliminate the spawn→attach race, the caller should hold the protected
+ * root stopped (SIGSTOP, ptrace, or a startup barrier) across this call and
+ * resume it only after ac_open returns 0. To bind the protected root's life
+ * to the loader's (see SCOPE.md, "Residual Weaknesses"), the protected root
+ * should call prctl(PR_SET_PDEATHSIG, SIGKILL) on itself before ac_open, and
+ * the loader should set PR_SET_CHILD_SUBREAPER so reparented descendants
+ * remain in the loader's subtree. */
+int ac_open(struct ac_session **out, __u32 protected_root_pid);
 void ac_close(struct ac_session *session);
-
-int ac_protect(struct ac_session *session, __u32 pid, __u32 policy);
-int ac_unprotect(struct ac_session *session, __u32 pid);
 
 int ac_poll(struct ac_session *session, int timeout_ms);
 int ac_next_event(struct ac_session *session, struct ac_event *out);
