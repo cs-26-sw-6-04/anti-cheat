@@ -60,6 +60,16 @@ void session::unprotect(__u32 pid) {
   REQUIRE(ac_unprotect(s_, pid) == 0);
 }
 
+void session::whitelist(__u32 pid) {
+  REQUIRE(s_);
+  REQUIRE(ac_whitelist_add(s_, pid) == 0);
+}
+
+void session::unwhitelist(__u32 pid) {
+  REQUIRE(s_);
+  REQUIRE(ac_whitelist_remove(s_, pid) == 0);
+}
+
 std::optional<deny> session::next_event() {
   REQUIRE(s_);
   ac_event e{};

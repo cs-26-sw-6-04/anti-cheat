@@ -39,6 +39,8 @@ public:
 
   void protect(__u32 pid, __u32 policy);
   void unprotect(__u32 pid);
+  void whitelist(__u32 pid);
+  void unwhitelist(__u32 pid);
 
   std::optional<deny> next_event();
   int poll(int timeout_ms = 100);
