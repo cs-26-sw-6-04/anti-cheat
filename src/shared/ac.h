@@ -48,6 +48,9 @@ void ac_close(struct ac_session *session);
 int ac_protect(struct ac_session *session, __u32 pid, __u32 policy);
 int ac_unprotect(struct ac_session *session, __u32 pid);
 
+int ac_whitelist_add(struct ac_session *session, __u32 pid);
+int ac_whitelist_remove(struct ac_session *session, __u32 pid);
+
 int ac_poll(struct ac_session *session, int timeout_ms);
 int ac_next_event(struct ac_session *session, struct ac_event *out);
 

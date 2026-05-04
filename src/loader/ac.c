@@ -149,6 +149,24 @@ int ac_unprotect(struct ac_session *s, __u32 pid) {
   return err;
 }
 
+int ac_whitelist_add(struct ac_session *s, __u32 pid) {
+  if (!s)
+    return -EINVAL;
+  __u32 marker = 1;
+  return bpf_map__update_elem(s->skel->maps.whitelist_pids, &pid, sizeof(pid),
+                              &marker, sizeof(marker), BPF_ANY);
+}
+
+int ac_whitelist_remove(struct ac_session *s, __u32 pid) {
+  if (!s)
+    return -EINVAL;
+  int err = bpf_map__delete_elem(s->skel->maps.whitelist_pids, &pid,
+                                 sizeof(pid), 0);
+  if (err == -ENOENT)
+    return 0;
+  return err;
+}
+
 int ac_poll(struct ac_session *s, int timeout_ms) {
   if (!s)
     return -EINVAL;
