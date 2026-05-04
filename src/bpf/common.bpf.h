@@ -29,6 +29,13 @@ struct {
   __type(value, __u32);
 } protected_pids SEC(".maps");
 
+struct {
+  __uint(type, BPF_MAP_TYPE_HASH);
+  __uint(max_entries, 4096);
+  __type(key, __u32);
+  __type(value, __u32);
+} whitelist_pids SEC(".maps");
+
 #ifdef AC_DEBUG_BUILD
 volatile __u32 ac_enabled[AC_ENF__COUNT] = {
     [AC_ENF_SELFPROTECT] = 1,
