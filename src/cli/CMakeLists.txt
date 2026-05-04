@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: MIT
 
-add_subdirectory(bpf)
-add_subdirectory(loader)
-add_subdirectory(cli)
+add_executable(ac main.c)
+
+target_link_libraries(ac
+    PRIVATE
+        ac_loader_runtime
+)
