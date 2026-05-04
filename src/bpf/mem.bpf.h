@@ -13,8 +13,6 @@ int BPF_PROG(mem_enforce, struct task_struct *child, unsigned int mode,
              int ret) {
   if (ret)
     return ret;
-  if (!enf_active(AC_ENF_MEMORY))
-    return 0;
 
   __u32 me = cur_pid();
   __u32 victim = BPF_CORE_READ(child, tgid);

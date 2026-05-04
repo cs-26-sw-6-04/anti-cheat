@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <array>
 #include <functional>
 #include <optional>
 
@@ -42,35 +41,15 @@ public:
   int poll(int timeout_ms = 100);
   void drain();
 
-#ifdef AC_DEBUG_BUILD
-  void set_enabled(ac_enforcer id, bool on);
-#endif
-
 private:
   ac_session *s_ = nullptr;
   explicit session(ac_session *s) : s_(s) {}
 };
 
-#ifdef AC_DEBUG_BUILD
-/* RAII: disables every user-facing enforcer except `keep`; restores on dtor.
- * SELFPROTECT is always on and not toggleable. */
-class only_enforcer {
-public:
-  only_enforcer(session &s, ac_enforcer keep);
-  ~only_enforcer();
-  only_enforcer(const only_enforcer &) = delete;
-  only_enforcer &operator=(const only_enforcer &) = delete;
-
-private:
-  session &s_;
-  std::array<bool, AC_ENF__COUNT> prev_{};
-};
-#endif
-
 /* Invoked in the "attack succeeds" SECTION after the attacker exits zero, with
  * the live target and the attacker's captured stdout/stderr. Must assert that
  * the attack actually achieved its effect (exfil matches, mutation landed,
- * etc.) — exit-code-only is not enough to distinguish a real hit from a
+ * etc.); exit-code-only is not enough to distinguish a real hit from a
  * silently-failed syscall. */
 using verify_success_fn = std::function<void(target &, const attack_result &)>;
 

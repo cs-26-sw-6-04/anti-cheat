@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 # Testing Strategy
 
 BPF LSM programs must be loaded, attached, and triggered against the real
-kernel path — `BPF_PROG_RUN` cannot stand in for that. The suite is therefore
+kernel path; `BPF_PROG_RUN` cannot stand in for that. The suite is therefore
 an integration suite: every test case runs a real attacker process against a
 real target process, with and without the enforcers active.
 
@@ -34,7 +34,7 @@ CTest runs cases serially to avoid live-session overlap.
 
 There is no `AC_ENF_PTRACE`. `process_vm_{read,write}v` and
 `ptrace(PTRACE_ATTACH)` all go through the same `lsm/ptrace_access_check`
-hook with the same `PTRACE_MODE_ATTACH_REALCREDS` mode bits — the LSM layer
+hook with the same `PTRACE_MODE_ATTACH_REALCREDS` mode bits; the LSM layer
 does not distinguish them, so splitting attribution between "memory access"
 and "ptrace attach" at this hook would be dishonest. `AC_ENF_MEMORY` owns
 the entire subtree-access domain and fires for all of the above.
@@ -44,13 +44,14 @@ the entire subtree-access domain and fires for all of the above.
 Each scenario is a declarative spec passed to `run_scenario`, which executes
 two SECTIONs automatically:
 
-1. **attack succeeds (no enforcer)** — no session; the attack must succeed
+1. **attack succeeds (no enforcer)**: no session; the attack must succeed
    *and* `verify_success` must confirm the expected side-effect (bytes
    exfiltrated, target memory mutated, etc.). Exit code alone proves only
-   that a syscall returned — not that the capability landed.
-2. **protected** — a session is opened, the expected enforcer is isolated via
-   `only_enforcer` (Debug builds only), the attack must fail with the correct
-   attribution event.
+   that a syscall returned, not that the capability landed.
+2. **protected**: a session is opened and the attack must fail with the
+   correct attribution event. No runtime enforcer toggling: selfprotect and
+   memory have disjoint victim domains (loader vs. subtree), so each attack
+   matches at most one enforcer by construction.
 
 Tokens (initial flag, mutation payload) are freshly randomized per-run by
 `ac::random_token()` so attackers can't hardcode them.
@@ -78,13 +79,14 @@ TEST_CASE("memory enforcer blocks process_vm_readv", "[mem][read]") {
 }
 ```
 
-The attack is a lambda inlined in the scenario — reads top-to-bottom with no
-indirection. Promote to a `tests/support/` helper only once it's shared.
+The attack is a lambda inlined in the scenario, which reads top-to-bottom
+with no indirection. Promote to a `tests/support/` helper only once it's
+shared.
 
 For mutation-style attacks (e.g. `process_vm_writev`), `verify_success` calls
-`t.stop()` and asserts `t.observed_flag()` — the `FLAG <value>` line printed
-by the target on stdin EOF — matches the randomized payload the attacker
-wrote.
+`t.stop()` and asserts that `t.observed_flag()` (the `FLAG <value>` line
+printed by the target on stdin EOF) matches the randomized payload the
+attacker wrote.
 
 Adding a new enforcer test: write a target factory in `support/targets.*` if
 needed, an attacker factory in `support/attacks.*` if needed, then a one-file
@@ -94,17 +96,13 @@ needed, an attacker factory in `support/attacks.*` if needed, then a one-file
 
 Every deny event carries an `enforcer` field. The `FiredBy` Catch2 matcher
 produces readable mismatch messages (e.g., `expected fired by
-enforcer=MEMORY`, `got fired by enforcer=PTRACE`).
+enforcer=MEMORY`, `got fired by enforcer=SELFPROTECT`).
 
-## Debug-Only Enforcer Toggle
-
-In Debug builds, `only_enforcer(session, AC_ENF_MEMORY)` is an RAII guard that
-disables every user-facing enforcer except the one under test — so tests see
-exactly the enforcer they expect. Self-protect is always on and not
-toggleable, in Debug or Release.
-
-`ac_set_enforcer_enabled` is not compiled in Release builds; the symbol is
-absent from `libac_loader_runtime.a`.
+There is no runtime on/off bit per enforcer. Both selfprotect and memory are
+unconditional. Each enforcer's domain check (loader pid vs. subtree
+ancestry) decides whether it fires for a given victim, and the two domains
+are disjoint, so tests do not need a toggle to isolate which enforcer
+fired. Debug and Release run the same code path.
 
 ## Running
 
@@ -117,6 +115,6 @@ sudo ctest --preset conan-debug --output-on-failure     # with live BPF
 ```
 
 Without root, the protected SECTION skips cleanly via Catch2 `SKIP`. The
-"attack succeeds (no enforcer)" SECTION still runs and must pass — proving
+"attack succeeds (no enforcer)" SECTION still runs and must pass, proving
 the attack actually works on this kernel (and that the exfil/mutation landed)
 before claiming the enforcer blocked it.

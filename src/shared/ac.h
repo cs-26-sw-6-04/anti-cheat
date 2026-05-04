@@ -54,7 +54,7 @@ struct ac_session;
  * caller must already have spawned the protected root and must be its parent;
  * the pid is burned into BPF rodata at skeleton load so hostile root cannot
  * shift enforcement onto a different target after attach. Pass 0 to run with
- * selfprotect only (no subtree enforcement) — useful for tests and diagnostic
+ * selfprotect only (no subtree enforcement); useful for tests and diagnostic
  * sessions. The caller's own pid is rejected (-EINVAL): selfprotect already
  * covers it, and registering it as the subtree root would collide attribution
  * between the two enforcers on the same victim.
@@ -106,11 +106,6 @@ int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
  * -ESRCH. */
 int ac_poll(struct ac_session *session, int timeout_ms);
 int ac_next_event(struct ac_session *session, struct ac_event *out);
-
-#ifdef AC_DEBUG_BUILD
-int ac_set_enforcer_enabled(struct ac_session *session, enum ac_enforcer id,
-                            int on);
-#endif
 
 #ifdef __cplusplus
 }

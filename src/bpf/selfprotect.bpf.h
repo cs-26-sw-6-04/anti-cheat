@@ -13,8 +13,6 @@ int BPF_PROG(selfprotect, struct task_struct *child, unsigned int mode,
              int ret) {
   if (ret)
     return ret;
-  if (!enf_active(AC_ENF_SELFPROTECT))
-    return 0;
 
   __u32 victim = BPF_CORE_READ(child, tgid);
   if (victim != ac_self_pid)

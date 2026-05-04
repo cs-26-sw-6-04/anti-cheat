@@ -12,18 +12,18 @@ This is a game protector. Two non-negotiables shape every design decision:
 budget, on every relevant syscall, on every process on the box. Prefer a
 single LSM deny at the kernel decision point over any user-visible or
 cross-syscall state machine. Reject attribution granularity that costs extra
-programs or maps. Release builds must constant-fold debug-only toggles.
+programs or maps.
 
 **Privacy.** We observe only what enforcement requires. No process tree,
 command line, syscall argument, or memory content is read or logged. Events
-carry enforcer id, attacker tgid, victim tgid — nothing else. Ring buffer,
+carry enforcer id, attacker tgid, victim tgid, nothing else. Ring buffer,
 not perf sampling. No telemetry, no aggregation.
 
 ## Consequences
 
 - The protected target is anchored in BPF rodata (`ac_self_pid`,
-  `ac_protected_root_pid`) at skeleton load — no mutable map a hostile root
-  could redirect post-attach. Subtree membership is a bounded
+  `ac_protected_root_pid`) at skeleton load, with no mutable map a hostile
+  root could redirect post-attach. Subtree membership is a bounded
   `task->real_parent` walk, not a per-pid registration call.
 - LSM hooks only. No tracepoints, kprobes, or syscall tracking unless an
   enforcement gap leaves no alternative.
@@ -32,6 +32,9 @@ not perf sampling. No telemetry, no aggregation.
   LSM chain ordering. Operations the kernel cannot reliably distinguish at
   one hook (e.g. `process_vm_rw` vs `PTRACE_ATTACH` at `ptrace_access_check`)
   share one enforcer rather than getting dishonest sub-attribution.
-- Self-protect always on, compiled in, no runtime disable path.
-- Debug-only toggles live in `.bss`/`.data`; Release puts them in `.rodata`
-  so the verifier dead-code-eliminates the checks.
+- No central enforcer-on/off control plane. A single byte gating every
+  enforcer is a single point of bypass: bitflip, kernel write-what-where,
+  or a deployed-by-mistake debug binary all win in one move. Each enforcer
+  decides whether to fire from its own rodata-anchored domain check, and
+  the domains are disjoint, so a runtime toggle would have nothing to do
+  anyway. Same code path in Debug and Release.

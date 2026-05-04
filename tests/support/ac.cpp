@@ -77,32 +77,6 @@ void session::drain() {
     poll(50);
 }
 
-#ifdef AC_DEBUG_BUILD
-void session::set_enabled(ac_enforcer id, bool on) {
-  REQUIRE(s_);
-  REQUIRE(ac_set_enforcer_enabled(s_, id, on ? 1 : 0) == 0);
-}
-
-only_enforcer::only_enforcer(session &s, ac_enforcer keep) : s_(s) {
-  /* Snapshot + disable all user-facing enforcers except `keep`. */
-  for (int i = 1; i < AC_ENF__COUNT; ++i) {
-    if (i == AC_ENF_SELFPROTECT)
-      continue;
-    prev_[i] = true;
-    s_.set_enabled(static_cast<ac_enforcer>(i),
-                   static_cast<ac_enforcer>(i) == keep);
-  }
-}
-
-only_enforcer::~only_enforcer() {
-  for (int i = 1; i < AC_ENF__COUNT; ++i) {
-    if (i == AC_ENF_SELFPROTECT)
-      continue;
-    s_.set_enabled(static_cast<ac_enforcer>(i), prev_[i]);
-  }
-}
-#endif
-
 void run_scenario(const scenario_spec &spec) {
   REQUIRE(spec.verify_success);
 
@@ -118,9 +92,6 @@ void run_scenario(const scenario_spec &spec) {
   SECTION("protected") {
     auto t = spec.target();
     auto sess = session::open_or_skip(t.info().root_pid);
-#ifdef AC_DEBUG_BUILD
-    only_enforcer guard(sess, spec.expect_enforcer);
-#endif
 
     auto r = run_attacker(spec.attack, t.info());
     INFO("protected stderr: " << r.stderr);

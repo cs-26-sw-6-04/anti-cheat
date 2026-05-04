@@ -22,27 +22,22 @@ struct {
   __uint(max_entries, 256 * 1024);
 } events SEC(".maps");
 
-#ifdef AC_DEBUG_BUILD
-volatile __u32 ac_enabled[AC_ENF__COUNT] = {
-    [AC_ENF_SELFPROTECT] = 1,
-    [AC_ENF_MEMORY] = 1,
-};
-#else
-volatile const __u32 ac_enabled[AC_ENF__COUNT] = {
-    [AC_ENF_SELFPROTECT] = 1,
-    [AC_ENF_MEMORY] = 1,
-};
-#endif
-
 /* Loader burns its own pid and the protected subtree root pid into rodata
  * before skel__load(). rodata of a loaded program is not writable from
- * userspace, so hostile root cannot redirect enforcement post-attach. */
+ * userspace, so hostile root cannot redirect enforcement post-attach.
+ *
+ * There is intentionally no per-enforcer on/off bit. A central control
+ * plane is a single point of bypass: flipping one byte (bitflip,
+ * write-what-where in a kernel exploit, accidentally-deployed Debug
+ * binary) would silently disable every enforcer that gates on it.
+ * Selfprotect and memory are unconditional; they decide whether to fire
+ * by looking at the victim's domain (ac_self_pid for selfprotect, the
+ * subtree ancestry walk for memory). The two domains are disjoint by
+ * topological construction (loader is the parent of the protected root,
+ * not a descendant), so there is nothing for a runtime toggle to
+ * arbitrate. */
 volatile const __u32 ac_self_pid = 0;
 volatile const __u32 ac_protected_root_pid = 0;
-
-static __always_inline bool enf_active(__u32 id) {
-  return ac_enabled[id] != 0;
-}
 
 static __always_inline __u32 cur_pid(void) {
   return bpf_get_current_pid_tgid() >> 32;
@@ -50,7 +45,7 @@ static __always_inline __u32 cur_pid(void) {
 
 /* True iff `child`'s tgid is ac_protected_root_pid or one of its descendants,
  * via a bounded real_parent walk. Selfprotect (victim == ac_self_pid) is a
- * disjoint domain and handled by its own program — this helper deliberately
+ * disjoint domain and handled by its own program; this helper deliberately
  * does not treat ac_self_pid as protected so mem/ptrace attribution never
  * clashes with selfprotect's. Stops at init (tgid<=1) to avoid walking the
  * rest of the system. real_parent is kernel-owned bookkeeping that cannot

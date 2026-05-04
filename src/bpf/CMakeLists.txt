@@ -20,18 +20,12 @@ if(_bpf_multiarch AND EXISTS "/usr/include/${_bpf_multiarch}")
   list(APPEND BPF_INCLUDE_DIRS "/usr/include/${_bpf_multiarch}")
 endif()
 
-set(BPF_DEFINES "")
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND BPF_DEFINES AC_DEBUG_BUILD)
-endif()
-
 # All enforcers live in one TU. Adding a new enforcer: drop a <name>.bpf.h
 # that declares its SEC() programs and #include it from enforcers.bpf.c.
 add_bpf_object(enforcers
     enforcers.bpf.c
     VMLINUX_H "${VmlinuxH_INCLUDE_DIR}"
     INCLUDES  ${BPF_INCLUDE_DIRS}
-    DEFINES   ${BPF_DEFINES}
 )
 
 set(BPF_COMBINED_O "${CMAKE_CURRENT_BINARY_DIR}/skeleton/enforcers.bpf.o")
