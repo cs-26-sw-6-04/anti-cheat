@@ -8,3 +8,16 @@ target_link_libraries(ac
     PRIVATE
         ac_loader_runtime
 )
+
+# `sudo cmake --install <build-dir>` installs the binary as
+# /usr/local/bin/ac (or wherever CMAKE_INSTALL_PREFIX points) with the
+# setuid bit set and owned by root (root because that's whoever runs the
+# install).
+install(TARGETS ac
+    RUNTIME DESTINATION bin
+    PERMISSIONS
+        OWNER_READ OWNER_WRITE OWNER_EXECUTE
+        GROUP_READ GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
+        SETUID
+)

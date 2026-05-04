@@ -10,15 +10,27 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 struct exec_ctx {
   char **argv; /* NULL-terminated; argv[0] is the program. */
+  uid_t real_uid;
 };
 
 static int exec_child(void *user) {
   struct exec_ctx *c = user;
+
+  /* Drop root before handing control to the user's program. setuid(ruid)
+   * with euid == 0 sets all three (real, effective, saved) uids to ruid;
+   * the program cannot regain root. We never elevated egid or groups
+   * (no setgid bit, no setcap +s) so they already match the caller. */
+  if (setuid(c->real_uid) != 0) {
+    fprintf(stderr, "ac: setuid: %s\n", strerror(errno));
+    return 126;
+  }
+
   execvp(c->argv[0], c->argv);
   fprintf(stderr, "ac: exec '%s': %s\n", c->argv[0], strerror(errno));
   return 127;
@@ -48,8 +60,20 @@ static void usage(const char *me) {
           "  %s ./mygame\n"
           "  %s /opt/games/mygame --windowed\n"
           "\n"
-          "Needs root: installs kernel-level hooks at startup.\n",
+          "Your program runs as your normal user. ac itself needs to be\n"
+          "setuid root once so it can install the kernel hooks; if it\n"
+          "isn't, it'll print the one-time setup command.\n",
           me, me, me);
+}
+
+static void print_install_hint(const char *me) {
+  fprintf(stderr,
+          "ac: not setuid root, can't load kernel hooks.\n"
+          "One-time setup:\n"
+          "    sudo chown root:root %s\n"
+          "    sudo chmod u+s %s\n"
+          "After that, run as your normal user.\n",
+          me, me);
 }
 
 int main(int argc, char **argv) {
@@ -59,7 +83,12 @@ int main(int argc, char **argv) {
     return argc < 2 ? 2 : 0;
   }
 
-  struct exec_ctx ctx = {.argv = &argv[1]};
+  if (geteuid() != 0) {
+    print_install_hint(argv[0]);
+    return 1;
+  }
+
+  struct exec_ctx ctx = {.argv = &argv[1], .real_uid = getuid()};
 
   struct ac_session *s = NULL;
   __u32 pid = 0;
