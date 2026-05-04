@@ -13,14 +13,26 @@
 #include <bpf/libbpf.h>
 
 #include <errno.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+/* glibc only exposes pidfd_open from 2.36+; go through syscall(2) so we work
+ * on older runtimes the kernel still supports. __NR_pidfd_open landed in
+ * 5.3, well below our baseline. */
+static int pidfd_open_compat(__u32 pid) {
+  long fd = syscall(__NR_pidfd_open, (pid_t)pid, 0u);
+  if (fd < 0)
+    return -errno;
+  return (int)fd;
+}
 
 static int libbpf_print(enum libbpf_print_level level, const char *fmt,
                         va_list args) {
@@ -38,7 +50,7 @@ static int require_bpf_lsm_active(void) {
   if (!f) {
     fprintf(stderr,
             "ac: cannot open /sys/kernel/security/lsm (%s); BPF LSM status "
-            "unknown — refusing to attach silently.\n",
+            "unknown; refusing to attach silently.\n",
             strerror(errno));
     return -EOPNOTSUPP;
   }
@@ -90,17 +102,33 @@ int ac_open(struct ac_session **out, __u32 protected_root_pid) {
   struct ac_session *s = calloc(1, sizeof(*s));
   if (!s)
     return -ENOMEM;
+  s->root_pidfd = -1;
+
+  /* Bind to the protected root's task_struct *before* we burn its pid into
+   * rodata. If the root is already gone, fail fast with -ESRCH and never
+   * load BPF programs that would protect a stranger after pid reuse. */
+  if (protected_root_pid != 0) {
+    int pidfd = pidfd_open_compat(protected_root_pid);
+    if (pidfd < 0) {
+      free(s);
+      return pidfd;
+    }
+    s->root_pidfd = pidfd;
+  }
 
   s->skel = enforcers_bpf__open();
   if (!s->skel) {
+    int e = errno ? -errno : -EIO;
+    if (s->root_pidfd >= 0)
+      close(s->root_pidfd);
     free(s);
-    return -errno ? -errno : -EIO;
+    return e;
   }
 
   /* Burn both pids into rodata before load. rodata of a loaded program is
-   * immutable from userspace — hostile root cannot redirect enforcement onto
-   * a different self/target after the fact, which is the entire reason the
-   * protected set lives here instead of in a mutable map. */
+   * immutable from userspace, so hostile root cannot redirect enforcement
+   * onto a different self/target after the fact, which is the entire reason
+   * the protected set lives here instead of in a mutable map. */
   s->skel->rodata->ac_self_pid = (__u32)getpid();
   s->skel->rodata->ac_protected_root_pid = protected_root_pid;
 
@@ -124,6 +152,8 @@ int ac_open(struct ac_session **out, __u32 protected_root_pid) {
 
 fail:
   enforcers_bpf__destroy(s->skel);
+  if (s->root_pidfd >= 0)
+    close(s->root_pidfd);
   free(s);
   return err < 0 ? err : -err;
 }
@@ -135,13 +165,72 @@ void ac_close(struct ac_session *s) {
     ring_buffer__free(s->events);
   if (s->skel)
     enforcers_bpf__destroy(s->skel);
+  if (s->root_pidfd >= 0)
+    close(s->root_pidfd);
   free(s);
+}
+
+/* Tear down BPF enforcement immediately on root death. Leaving programs
+ * attached after the protected root exits would let a process awarded the
+ * reused pid inherit protection, so we drop enforcement at the moment our
+ * trust assumption breaks, not at the moment the caller gets around to
+ * calling ac_close. The session struct itself stays alive so queued events
+ * remain readable via ac_next_event. */
+static void ac_tear_down_after_root_death(struct ac_session *s) {
+  if (s->events) {
+    ring_buffer__free(s->events);
+    s->events = NULL;
+  }
+  if (s->skel) {
+    enforcers_bpf__destroy(s->skel);
+    s->skel = NULL;
+  }
+  if (s->root_pidfd >= 0) {
+    close(s->root_pidfd);
+    s->root_pidfd = -1;
+  }
+  s->root_dead = 1;
 }
 
 int ac_poll(struct ac_session *s, int timeout_ms) {
   if (!s)
     return -EINVAL;
-  return ring_buffer__poll(s->events, timeout_ms);
+  if (s->root_dead)
+    return -ESRCH;
+
+  /* No protected root: just drive the ring buffer. */
+  if (s->root_pidfd < 0)
+    return ring_buffer__poll(s->events, timeout_ms);
+
+  struct pollfd pfds[2];
+  pfds[0].fd = ring_buffer__epoll_fd(s->events);
+  pfds[0].events = POLLIN;
+  pfds[0].revents = 0;
+  pfds[1].fd = s->root_pidfd;
+  pfds[1].events = POLLIN;
+  pfds[1].revents = 0;
+
+  int rc = poll(pfds, 2, timeout_ms);
+  if (rc < 0)
+    return -errno;
+  if (rc == 0)
+    return 0;
+
+  /* Drain any queued events first so the caller sees the final deny that
+   * may have fired in the same instant the root died. */
+  int events = 0;
+  if (pfds[0].revents & POLLIN) {
+    int n = ring_buffer__consume(s->events);
+    if (n > 0)
+      events = n;
+  }
+
+  if (pfds[1].revents & POLLIN) {
+    ac_tear_down_after_root_death(s);
+    return -ESRCH;
+  }
+
+  return events;
 }
 
 int ac_next_event(struct ac_session *s, struct ac_event *out) {
@@ -221,7 +310,7 @@ int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
   close(barrier[1]);
 
   if (werr) {
-    /* Child died between fork and release (e.g. PR_SET_PDEATHSIG fired) —
+    /* Child died between fork and release (e.g. PR_SET_PDEATHSIG fired);
      * unwind cleanly so callers never see a half-built session. */
     ac_close(*out);
     *out = NULL;

@@ -18,6 +18,8 @@ target_include_directories(ac_loader_runtime
 )
 
 target_compile_definitions(ac_loader_runtime
+    PRIVATE
+        _GNU_SOURCE  # syscall(2), pidfd-related declarations
     PUBLIC
         $<$<CONFIG:Debug>:AC_DEBUG_BUILD>
 )

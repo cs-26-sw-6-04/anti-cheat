@@ -32,7 +32,7 @@ TEST_CASE("ac_spawn_and_protect runs the child only after enforcement is live",
           "[api][spawn]") {
   /* The child writes a token to this pipe as its first action. If the byte
    * arrives, the barrier was released, which can only happen after ac_open
-   * succeeded — so we've actually exercised the post-attach release. */
+   * succeeded, so we've actually exercised the post-attach release. */
   int sig[2];
   REQUIRE(pipe(sig) == 0);
 
@@ -70,6 +70,42 @@ TEST_CASE("ac_spawn_and_protect runs the child only after enforcement is live",
 
   ac_close(s);
   REQUIRE(kill((pid_t)pid, SIGTERM) == 0);
+  int status;
+  (void)waitpid((pid_t)pid, &status, 0);
+}
+
+TEST_CASE("ac_poll returns -ESRCH after the protected root dies",
+          "[api][pidfd]") {
+  ac_session *s = nullptr;
+  __u32 pid = 0;
+  int err = ac_spawn_and_protect(
+      &s, &pid, [](void *) -> int { pause(); return 0; }, nullptr);
+  if (err == -EPERM || err == -EACCES) {
+    SKIP("skipping live BPF test: insufficient privileges");
+  }
+  REQUIRE(err == 0);
+  REQUIRE(pid != 0);
+
+  /* Healthy session: short poll returns 0 (no events, root alive). */
+  REQUIRE(ac_poll(s, 50) == 0);
+
+  REQUIRE(kill((pid_t)pid, SIGKILL) == 0);
+
+  /* Drive the poll loop until pidfd notifies us. Even with SIGKILL the
+   * notification is async w.r.t. the killer; one or two iterations suffice
+   * in practice. */
+  int rc = 0;
+  for (int i = 0; i < 20; i++) {
+    rc = ac_poll(s, 100);
+    if (rc == -ESRCH)
+      break;
+  }
+  REQUIRE(rc == -ESRCH);
+
+  /* Sticky: subsequent polls keep returning -ESRCH. */
+  REQUIRE(ac_poll(s, 10) == -ESRCH);
+
+  ac_close(s);
   int status;
   (void)waitpid((pid_t)pid, &status, 0);
 }

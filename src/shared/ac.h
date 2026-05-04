@@ -95,6 +95,15 @@ typedef int (*ac_protected_main_fn)(void *user_data);
 int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
                          ac_protected_main_fn child_main, void *user_data);
 
+/* Drive the ring buffer and watch the protected root for exit.
+ *
+ * Returns the number of events consumed (≥ 0), or a negative errno. The
+ * specific errno -ESRCH means the protected root has died: the session has
+ * already torn down its BPF state to avoid protecting whoever inherits the
+ * pid, and queued events (if any) remain readable via ac_next_event. The
+ * caller must call ac_close. Subsequent ac_poll calls keep returning -ESRCH
+ * (sticky). Sessions opened with protected_root_pid == 0 never observe
+ * -ESRCH. */
 int ac_poll(struct ac_session *session, int timeout_ms);
 int ac_next_event(struct ac_session *session, struct ac_event *out);
 
