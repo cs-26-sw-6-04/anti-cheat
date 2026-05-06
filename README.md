@@ -15,6 +15,64 @@ Pass `-DVMLINUX_H_DIR=<dir>` to use a pre-built one instead.
 
 Unprivileged runs may skip live BPF tests.
 
+## Components
+
+### client
+
+The `client` binary simulates the monitored game process. It prints its PID on the first line
+of stdout, then loops sleeping until SIGINT or SIGTERM.
+
+```sh
+./build/debug-conan/bin/client/client
+# Prints the PID on the first line, e.g.:
+# 12345
+```
+
+### enforcer-cli
+
+The `enforcer-cli` binary requires root (or `CAP_BPF`) and a Linux kernel with BPF LSM in the
+active LSM stack (`cat /sys/kernel/security/lsm` must list `bpf`). It opens a BPF LSM session,
+protects the target PID with full policy (block ptrace and memory vectors), optionally whitelists
+additional PIDs, then polls for deny events and prints each one to stdout until SIGINT or SIGTERM.
+
+```sh
+sudo ./build/debug-conan/bin/enforcer-cli/enforcer-cli <target-pid> [--whitelist <pid1>[,<pid2>,...]]
+```
+
+**Example session** (two terminals):
+
+```sh
+# Terminal 1 — start the client (game-process analog)
+./build/debug-conan/bin/client/client
+# 12345
+
+# Terminal 2 — start the enforcer (requires root)
+sudo ./build/debug-conan/bin/enforcer-cli/enforcer-cli 12345
+# protecting pid 12345
+# monitoring — press Ctrl-C to stop
+
+# With a whitelisted PID (e.g. a trusted graphics driver process):
+sudo ./build/debug-conan/bin/enforcer-cli/enforcer-cli 12345 --whitelist 9876,9877
+# protecting pid 12345
+# whitelisted pid 9876
+# whitelisted pid 9877
+# monitoring — press Ctrl-C to stop
+```
+
+When the enforcer is running and an unwhitelisted process attempts ptrace or cross-process memory
+access against the client, the enforcer prints a DENY line:
+
+```
+DENY enforcer=PTRACE attacker=<pid> victim=12345 errno=-1
+```
+
+To observe blocking behaviour end-to-end, run the test suite as root on a Linux host with BPF LSM
+active:
+
+```sh
+sudo ctest --preset conan-debug --output-on-failure
+```
+
 ## Dependencies
 
 ### apt (Debian/Ubuntu)
