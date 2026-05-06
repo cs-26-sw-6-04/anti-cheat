@@ -65,3 +65,8 @@ cmake-build
 CMakeUserPresets.json
 
 compile_commands.json
+
+CLAUDE.md
+.planning
+.DS_Store
+
