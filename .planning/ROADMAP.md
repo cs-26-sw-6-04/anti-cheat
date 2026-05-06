@@ -43,8 +43,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — tests/block.cpp with explicit BLOCK-01/BLOCK-02 requirement-labelled Catch2 tests
-- [ ] 02-02-PLAN.md — README.md ## Components section for client and enforcer-cli
+- [x] 02-01-PLAN.md — tests/block.cpp with explicit BLOCK-01/BLOCK-02 requirement-labelled Catch2 tests
+- [x] 02-02-PLAN.md — README.md ## Components section for client and enforcer-cli
 
 ### Phase 3: Memory-Read Vector
 **Goal**: A new process_vm_readv eBPF monitor intercepts cross-process memory reads targeting the game PID, emits a ring buffer event, and blocks non-whitelisted callers — verified end-to-end by a standalone attacker binary that receives EPERM.
@@ -84,7 +84,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Whitelist Infrastructure + Stable Client | 0/4 | Not started | - |
-| 2. Block Existing Monitors | 0/2 | Not started | - |
+| 2. Block Existing Monitors | 2/2 | Complete | 2026-05-06 |
 | 3. Memory-Read Vector | 0/? | Not started | - |
 | 4. Procfs Vector | 0/? | Not started | - |
 | 5. Code-Injection Vector + Live Demo | 0/? | Not started | - |
