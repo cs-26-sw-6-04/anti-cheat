@@ -17,48 +17,32 @@ concurrency:
 
 jobs:
   build:
-    name: build (${{ matrix.os }})
+    name: ${{ matrix.build_type }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-25.10]
+        preset: [conan-debug, conan-release]
+        include:
+          - preset: conan-debug
+            build_type: Debug
+          - preset: conan-release
+            build_type: Release
 
+    # System dependencies (apt packages, bpftool, kernel BPF LSM) are
+    # provisioned on the self-hosted runner VM out-of-band. See docs/ci.md.
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y \
-            clang \
-            llvm \
-            libbpf-dev \
-            cmake \
-            pkg-config \
-            libelf-dev \
-            zlib1g-dev
-
-      - name: Install bpftool
-        env:
-          BPFTOOL_VERSION: v7.6.0
-        run: |
-          curl -fsSL \
-            "https://github.com/libbpf/bpftool/releases/download/${BPFTOOL_VERSION}/bpftool-${BPFTOOL_VERSION}-amd64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin
-          sudo chmod +x /usr/local/bin/bpftool
-          which bpftool
-          bpftool version
-
       - name: Configure
-        run: cmake --preset debug
+        run: |
+          mise exec -- conan profile detect --force
+          mise exec -- conan install . -s build_type=${{ matrix.build_type }} --build=missing
+          cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build --preset debug --parallel
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
 
-      #- name: Upload build artifacts
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: ac-bpf-${{ matrix.os }}
-      #    path: build/debug/loader/ac-loader
-      #    if-no-files-found: error
+      - name: Test
+        run: sudo ctest --preset ${{ matrix.preset }} --output-on-failure
