@@ -64,7 +64,7 @@ Ubuntu 25.10 ships `bpf` disabled in the LSM stack. Enable it by appending
 GRUB_CMDLINE_LINUX="lsm=lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
 ```
 
-The other entries are the distro default — read them from
+The other entries are the distro default; read them from
 `cat /sys/kernel/security/lsm` before editing so nothing is dropped. Then
 `sudo update-grub && sudo reboot`, and verify `bpf` shows up in
 `/sys/kernel/security/lsm`.

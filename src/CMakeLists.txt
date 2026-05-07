@@ -4,3 +4,4 @@
 
 add_subdirectory(bpf)
 add_subdirectory(loader)
+add_subdirectory(cli)

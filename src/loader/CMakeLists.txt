@@ -6,7 +6,6 @@ cmake_path(GET BPF_SKELETON_HEADER PARENT_PATH skeleton_dir)
 
 add_library(ac_loader_runtime STATIC
     ac.c
-    ac_debug.c
 )
 
 target_include_directories(ac_loader_runtime
@@ -18,8 +17,8 @@ target_include_directories(ac_loader_runtime
 )
 
 target_compile_definitions(ac_loader_runtime
-    PUBLIC
-        $<$<CONFIG:Debug>:AC_DEBUG_BUILD>
+    PRIVATE
+        _GNU_SOURCE  # syscall(2), pidfd-related declarations
 )
 
 target_link_libraries(ac_loader_runtime

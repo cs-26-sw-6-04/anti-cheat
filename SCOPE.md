@@ -52,6 +52,23 @@ Attacks are out of scope here if they require any of the following:
 
 This scope is intentionally narrower than a commercial end-to-end anti-cheat. The goal is to remove cheap client-side tampering and create a defensible trust framework for a userspace and kernel-space anti-cheat on an otherwise open Linux system.
 
+## Residual Weaknesses
+
+### Loader process death drops enforcement
+
+BPF LSM programs live for as long as the loader holds their `bpf_link` file descriptors. If the loader exits, including a hostile `SIGKILL` from root, the kernel closes those fds during `do_exit`, detaches the programs, and enforcement stops. BPF has no "on unload" hook we could use to react from inside the kernel, and a non-PID-1 process cannot mask `SIGKILL`.
+
+The design closes this by binding the protected process's life to the loader's:
+
+- The protected root is spawned by the loader and sets `PR_SET_PDEATHSIG(SIGKILL)` on itself before it executes any attackable code. When the loader exits for any reason, the kernel atomically delivers `SIGKILL` to the protected root.
+- The invariant is therefore: *loader alive ⇒ enforcement active; loader dead ⇒ protected root also dead.* The cheat target is gone at the moment enforcement goes away, so there is nothing interesting left to attack.
+
+Residual micro-race: between the loader's fd-table teardown dropping the BPF links and the protected root actually processing its `SIGKILL`, there is a brief window (microseconds) where enforcement is off but the target is still running. An attacker who can time a syscall into that window could read or write the target's memory. Closing this would require either making the loader unkillable (not possible outside PID 1) or moving enforcement into a kernel module (out of scope per the trusted base).
+
+Descendants of the protected root that outlive it are not covered by `PR_SET_PDEATHSIG` and are reparented to the loader (via `PR_SET_CHILD_SUBREAPER`) before exiting with it. They lose enforcement when the loader dies, same as above.
+
+Out-of-band mitigations (server-side liveness checks, service supervision, heartbeat-gated sessions) are expected to detect loader absence; they are orthogonal to the in-kernel protections described here.
+
 ## Notes
 
 This framing follows common anti-cheat taxonomies that separate client tampering from network, server, and real-world cheating, and matches the industry trend of using prevention-first client integrity plus platform trust anchors such as Secure Boot and TPM-backed signals.

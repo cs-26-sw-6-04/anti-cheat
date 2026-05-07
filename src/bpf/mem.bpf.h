@@ -13,16 +13,13 @@ int BPF_PROG(mem_enforce, struct task_struct *child, unsigned int mode,
              int ret) {
   if (ret)
     return ret;
-  if (!enf_active(AC_ENF_MEMORY))
-    return 0;
 
   __u32 me = cur_pid();
   __u32 victim = BPF_CORE_READ(child, tgid);
   if (me == victim)
     return 0;
 
-  __u32 *policy = bpf_map_lookup_elem(&protected_pids, &victim);
-  if (!policy || !(*policy & AC_POLICY_BLOCK_MEMORY))
+  if (!is_in_protected_subtree(child))
     return 0;
 
   if (bpf_map_lookup_elem(&whitelist_pids, &me))

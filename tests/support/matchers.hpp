@@ -21,8 +21,6 @@ inline const char *enforcer_name(__u32 e) {
     return "SELFPROTECT";
   case AC_ENF_MEMORY:
     return "MEMORY";
-  case AC_ENF_PTRACE:
-    return "PTRACE";
   default:
     return "?";
   }

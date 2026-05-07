@@ -18,7 +18,15 @@
 namespace ac {
 
 struct target_info {
+  /* The pid the attack targets (process_vm_readv/writev, ptrace). */
   __u32 pid;
+  /* The pid to pass to ac_open as the protected subtree root. Usually equals
+   * `pid` (single-process target). Differs for nested targets where the
+   * subtree root spawns a descendant that holds the victim state; then
+   * `pid` is the descendant and `root_pid` is the subtree root. 0 means
+   * "open without subtree protection" (selfprotect-only, used by the ac_self
+   * target factory). */
+  __u32 root_pid;
   uintptr_t addr;
   size_t len;
   std::string flag;
@@ -46,6 +54,14 @@ public:
   /* Set by factories when the initial secret is known up front. Attacker-side
    * reads are verified against this value. */
   void set_flag(std::string flag) { info_.flag = std::move(flag); }
+  /* Set by factories to declare which pid the ac_session should protect as
+   * the subtree root. For single-process targets this is info.pid; for nested
+   * targets it is the intermediate spawned pid (not the grandchild victim). */
+  void set_root_pid(__u32 p) { info_.root_pid = p; }
+  /* The pid target::spawn() forked directly. For single-process targets this
+   * equals info.pid; for nested targets this is the intermediate child (the
+   * subtree root), while info.pid is its grandchild. */
+  __u32 spawned_pid() const { return static_cast<__u32>(child_pid_); }
   /* FLAG <value> line captured by stop(); empty until stop() has been called.
    * Used to verify writev-style attacks actually mutated the target's buffer. */
   const std::string &observed_flag() const { return observed_flag_; }
