@@ -423,7 +423,7 @@ Note: The working directory is macOS (darwin 25.3.0). Development workflow appea
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED via Plan 01-01 checkpoints)
 
 ### A1: inject enforcer victim domain — who is the caller?
 **What we know:** `lsm/mmap_file` fires in the context of the process calling `mmap`. A process can only mmap into its own address space. An external attacker cannot `mmap` into the game process's address space (that would require ptrace+poketext, which `ptrace_access_check` already blocks).
