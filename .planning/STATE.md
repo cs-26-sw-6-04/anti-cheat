@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-09T20:00:00.000Z"
+last_updated: "2026-05-09T20:12:10.702Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
-  percent: 25
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
 
 **Project:** anti-cheat — eBPF BPF LSM runtime integrity enforcement
-**Status:** Executing Phase 01 (Plan 01 complete — ready for Plan 02)
+**Status:** Executing Phase 01 (Plan 02 complete — ready for Plan 03)
 **Last Activity:** 2026-05-09
 
 ## Current Phase
 
-Phase 1 — BPF LSM Gap Closure (In progress — Plan 01 complete; Plan 02 next)
+Phase 1 — BPF LSM Gap Closure (In progress — Plan 02 complete; Plan 03 next)
 
 ## Completed Phases
 
@@ -37,11 +37,17 @@ Already implemented in `src/`:
 - `src/cli/` — `ac` CLI wrapping spawn+protect
 - Tests: memory.cpp, self_protect.cpp, subtree.cpp, api.cpp
 
+Now implemented (Plan 02):
+
+- `AC_ENF_INJECT = 3` — `lsm/mmap_file` hook blocking anonymous PROT_EXEC mmap from within the protected subtree
+- `target::release()` — go-signal barrier for race-free inject test synchronisation
+- `mmap_exec_self()` factory + `tests/inject.cpp` integration tests
+- `AC_ENF_EXECVE = 4` and `AC_ENF__COUNT = 5` pre-allocated in enum (execve.bpf.h comes in Plan 03)
+
 Not yet implemented:
 
-- `inject` enforcer — file_mmap/file_mprotect for PROT_EXEC mapping blocking
-- `execve` enforcer — bprm_check_security for unauthorized exec detection
-- Extended `/proc` path coverage for openat beyond what ptrace_access_check covers
+- `execve` enforcer — bprm_check_security for unauthorized exec detection (Plan 03)
+- Extended `/proc` path coverage for openat beyond what ptrace_access_check covers (Plan 04)
 
 ## Architecture Invariants
 
