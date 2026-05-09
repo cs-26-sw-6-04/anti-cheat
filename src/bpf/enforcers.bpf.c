@@ -11,6 +11,8 @@
  * Enforcers split by DOMAIN (who the victim is), not by operation kind:
  *   - selfprotect: victim == ac_self_pid (loader itself).
  *   - mem:         victim in the ac_protected_root_pid subtree.
+ *   - inject:      caller in ac_protected_root_pid subtree, prot & PROT_EXEC,
+ *                  file == NULL (anonymous PROT_EXEC mmap = shellcode injection).
  * Domains are disjoint (mem explicitly skips ac_self_pid via its walk), so
  * attribution does not depend on BPF LSM chain ordering.
  */
@@ -19,5 +21,6 @@
 
 #include "selfprotect.bpf.h"
 #include "mem.bpf.h"
+#include "inject.bpf.h"
 
 char LICENSE[] SEC("license") = "GPL";
