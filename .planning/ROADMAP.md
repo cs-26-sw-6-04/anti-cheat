@@ -13,7 +13,7 @@
 **Plans:** 4 plans
 
 Plans:
-- [~] 01-01-PLAN.md — Design decisions and /proc coverage audit (paused: awaiting A3 Linux audit + A1/A2/A6 decisions)
+- [x] 01-01-PLAN.md — Design decisions and /proc coverage audit (complete: A1/A2/A3/A6 recorded in docs/design-decisions.md)
 - [ ] 01-02-PLAN.md — inject enforcer end-to-end (bpf hook, enum, factory, tests, CLI)
 - [ ] 01-03-PLAN.md — execve enforcer end-to-end (bpf hook, factory, tests)
 - [ ] 01-04-PLAN.md — proc enforcer conditional + docs/testing.md + ac.h comment polish
