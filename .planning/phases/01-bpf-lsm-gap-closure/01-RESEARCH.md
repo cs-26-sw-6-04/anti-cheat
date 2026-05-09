@@ -199,8 +199,15 @@ int BPF_PROG(inject_mmap_enforce, struct file *file,
   if (!(prot & PROT_EXEC))
     return 0;
 
+  // file == NULL for anonymous mappings (MAP_ANONYMOUS). File-backed mappings
+  // — .so files loaded by ld.so at game startup — have file != NULL. Filtering
+  // them here means legitimate library loads never trigger the enforcer; no
+  // "skip-during-startup" logic is needed elsewhere.
+  if (file != NULL)
+    return 0;
+
   __u32 me = cur_pid();
-  struct task_struct *t = (struct task_struct *)bpf_get_current_task();
+  struct task_struct *t = bpf_get_current_task_btf();
 
   // Domain check: caller must be in the protected subtree
   // (inject = game maps exec code into itself; external caller
@@ -214,7 +221,7 @@ int BPF_PROG(inject_mmap_enforce, struct file *file,
 }
 ```
 
-Note: `bpf_get_current_task()` returns `struct bpf_pidns_info *` — use cast to `struct task_struct *` with CO-RE. [ASSUMED] This cast is valid with vmlinux BTF. Alternative: derive via `cur_pid()` only, pass `me` as both attacker and victim. The `target_pid` in the event will be the same as `pid` for self-injection.
+Note: `bpf_get_current_task_btf()` (available kernel 5.11+) returns a fully-typed `struct task_struct *` pointer directly — no cast required. [VERIFIED: kernel 5.11 release notes / libbpf CO-RE docs] This is preferred over `bpf_get_current_task()` which returns an opaque `void *` requiring an unsafe cast. The `file == NULL` filter ensures file-backed PROT_EXEC mappings (normal library loads) pass through unblocked.
 
 ### Pattern 3: execve enforcer (`lsm/bprm_check_security`)
 
@@ -228,7 +235,7 @@ int BPF_PROG(execve_enforce, struct linux_binprm *bprm, int ret) {
     return ret;
 
   __u32 me = cur_pid();
-  struct task_struct *t = (struct task_struct *)bpf_get_current_task();
+  struct task_struct *t = bpf_get_current_task_btf();
 
   if (!is_in_protected_subtree(t))
     return 0;
@@ -440,6 +447,14 @@ Note: The working directory is macOS (darwin 25.3.0). Development workflow appea
 **What's unclear:** Whether `/proc/<pid>/maps`, `/proc/<pid>/smaps`, `/proc/<pid>/auxv`, `/proc/<pid>/status`, `/proc/<pid>/cmdline`, etc. each call `mm_access` or some other (or no) LSM hook path. This must be determined by reading `fs/proc/base.c` in the kernel source or empirically via testing (open each file without enforcer → verify accessible; with enforcer → verify blocked or not).
 **Recommendation:** Phase 1 implementation task must include this audit. REQ-03 explicitly requires it. The `file_open` enforcer should only be added if gaps are found. Do not assume coverage without verification.
 
+### A6: test harness incompatibility for inject and execve scenarios
+**What we know:** The existing `run_scenario` pattern (see `tests/support/ac.cpp`) runs the "attack" in an external attacker process forked by the test harness. This works perfectly for `memory` tests where an external process calls `process_vm_readv` targeting the protected PID. For `inject` (anonymous PROT_EXEC mmap) and `execve` (exec from within subtree), the attack must originate from *inside* the protected process — the caller must be a member of the protected subtree for the enforcer to fire. The current harness has no mechanism to drive an action from inside the protected target.
+**What's unclear:** Which of the following approaches is acceptable?
+- (a) `self_attack` field in `scenario_spec` — a callable sent to the target process via the existing stdin command protocol, executed inside the target child, with result read back before session drain. Requires extending `tests/support/target.hpp` and the target protocol.
+- (b) New target factories (`targets::mmap_exec_self()`, `targets::exec_child()`) — the target's `target_fn` itself performs the malicious action (mmap PROT_EXEC or exec a child binary) immediately after printing READY. The test's "attack succeeds" section spawns this target without a session; "protected" section spawns it with a session. The existing `run_scenario` wrapper is not used.
+- (c) Reinterpret the requirements so the attacker is always external — e.g., for inject, test that an *external* attacker cannot cause the game to map PROT_EXEC memory via some IPC mechanism. This may not satisfy REQ-01 and REQ-02 as written.
+**Recommendation:** Option (b) (new target factories) is the smallest change to the test infrastructure. The `target_fn` signature already supports arbitrary code in the child; factories like `flag_secret()` demonstrate the pattern. The planner should design inject and execve test tasks around this factory approach rather than `run_scenario`. Confirm with user before writing test tasks for REQ-05 and REQ-06.
+
 ---
 
 ## State of the Art
@@ -461,7 +476,7 @@ Note: The working directory is macOS (darwin 25.3.0). Development workflow appea
 | A2 | execve enforcer should fire on descendants of `ac_protected_root_pid` but not on the root's own first exec (option (a) of A2) | Open Questions | Blocks game startup if wrong; or fails to detect exec of malicious binaries by root process |
 | A3 | `ptrace_access_check` covers `/proc/<pid>/mem` and `/proc/<pid>/environ` but NOT `/proc/<pid>/maps`, `/proc/<pid>/status`, etc. | Open Questions | If wrong (broader coverage), REQ-03 may require no `file_open` enforcer; if coverage is narrower, more paths need protecting |
 | A4 | `bpf_d_path` / `bpf_path_d_path` is callable from `lsm.s/file_open` | Standard Stack, Pattern 4 | Verifier rejection at load time; fallback: parse dentry chain with BPF_CORE_READ without bpf_d_path |
-| A5 | `bpf_get_current_task()` return value can be cast to `struct task_struct *` with CO-RE in the `mmap_file` hook context | Pattern 2 | Verifier may reject the pointer cast; alternative: use `cur_pid()` only and pass as both `pid` and `target_pid` in the event |
+| A5 | `bpf_get_current_task_btf()` (kernel 5.11+) returns a typed `struct task_struct *` directly — no cast required. Available on kernel 5.11+; minimum for this project is 5.10. [MEDIUM — one minor version gap] | Pattern 2, Pattern 3 | If running on exactly 5.10, fall back to `cur_pid()` only (pass `me` as both pid and target_pid in the event) |
 
 ---
 
@@ -547,7 +562,7 @@ Note: The working directory is macOS (darwin 25.3.0). Development workflow appea
 
 ### Tertiary (LOW confidence)
 - Sleepable LSM hooks set (LKML patch thread) — file_open confirmed in sleepable set, enabling bpf_d_path; specific kernel version not nailed down [ASSUMED]
-- bpf_get_current_task() cast to task_struct in mmap_file context — inferred from existing CO-RE patterns; not confirmed in a mmap_file-specific example [ASSUMED]
+- `bpf_get_current_task_btf()` availability on kernel 5.10 (project minimum) — available since 5.11; one-version gap requires confirmation [MEDIUM]
 
 ---
 
