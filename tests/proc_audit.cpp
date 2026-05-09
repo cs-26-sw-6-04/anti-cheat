@@ -19,13 +19,19 @@
  *   kernel 5.11+, CONFIG_BPF_LSM=y, lsm=...,bpf in kernel command line
  *   Run as root: sudo ctest --preset conan-debug -R "proc.*audit" --output-on-failure
  *
- * A3 AUDIT RESULT: /proc/<pid>/mem     -- [FILL IN AFTER RUNNING ON LINUX]
- * A3 AUDIT RESULT: /proc/<pid>/maps    -- [FILL IN AFTER RUNNING ON LINUX]
- * A3 AUDIT RESULT: /proc/<pid>/smaps   -- [FILL IN AFTER RUNNING ON LINUX]
- * A3 AUDIT RESULT: /proc/<pid>/auxv    -- [FILL IN AFTER RUNNING ON LINUX]
- * A3 AUDIT RESULT: /proc/<pid>/status  -- [FILL IN AFTER RUNNING ON LINUX]
- * A3 AUDIT RESULT: /proc/<pid>/cmdline -- [FILL IN AFTER RUNNING ON LINUX]
- * A3 AUDIT RESULT: /proc/<pid>/environ -- [FILL IN AFTER RUNNING ON LINUX]
+ * NOTE: Results below are inferred from Linux kernel source (not empirically
+ * measured). Verify on a Linux host with BPF LSM before finalising Wave 4.
+ * proc_mem_open -> __ptrace_may_access -> security_ptrace_access_check (COVERED).
+ * proc_maps_open / smaps / auxv -> ptrace_may_access (COVERED, kernel >= 4.x).
+ * status / cmdline / environ -> world-readable or owner-only, no ptrace gate (UNCOVERED).
+ *
+ * A3 AUDIT RESULT: /proc/<pid>/mem     -- COVERED by ptrace_access_check (inferred)
+ * A3 AUDIT RESULT: /proc/<pid>/maps    -- COVERED by ptrace_access_check (inferred)
+ * A3 AUDIT RESULT: /proc/<pid>/smaps   -- COVERED by ptrace_access_check (inferred)
+ * A3 AUDIT RESULT: /proc/<pid>/auxv    -- COVERED by ptrace_access_check (inferred)
+ * A3 AUDIT RESULT: /proc/<pid>/status  -- UNCOVERED -- proc enforcer needed (inferred)
+ * A3 AUDIT RESULT: /proc/<pid>/cmdline -- UNCOVERED -- proc enforcer needed (inferred)
+ * A3 AUDIT RESULT: /proc/<pid>/environ -- UNCOVERED -- proc enforcer needed (inferred)
  *
  * NOTE: This file is a one-shot diagnostic. Delete it in Wave 4 after recording
  * the A3 results in docs/design-decisions.md.
