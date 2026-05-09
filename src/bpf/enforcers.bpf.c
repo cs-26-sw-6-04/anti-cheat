@@ -15,6 +15,8 @@
  *                  file == NULL (anonymous PROT_EXEC mmap = shellcode injection).
  *   - execve:      caller is descendant (not root) of ac_protected_root_pid;
  *                  blocks exec of attacker-controlled binaries from the subtree.
+ *   - proc:        file_open on /proc/<ac_protected_root_pid>/* paths not already
+ *                  covered by ptrace_access_check (status, cmdline, environ).
  * Domains are disjoint (mem explicitly skips ac_self_pid via its walk), so
  * attribution does not depend on BPF LSM chain ordering.
  */
@@ -25,5 +27,6 @@
 #include "mem.bpf.h"
 #include "inject.bpf.h"
 #include "execve.bpf.h"
+#include "proc.bpf.h"
 
 char LICENSE[] SEC("license") = "GPL";
