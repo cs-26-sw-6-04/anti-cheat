@@ -27,4 +27,13 @@ target_factory flag_secret_nested();
  * subtree registered (selfprotect still handles the loader pid via rodata). */
 target_factory ac_self();
 
+/* Target performs an anonymous PROT_EXEC mmap from inside the protected
+ * process. Used by inject enforcer tests (attack originates inside subtree).
+ * SYNCHRONISATION: target_fn reads ONE byte (the "go" signal) from stdin
+ * after READY before performing the mmap. Test must call t.release() after
+ * session::open_or_skip() to unblock the mmap.
+ * "attack succeeds" section: call t.release() without session; mmap returns valid ptr.
+ * "protected" section: open session first, then t.release(); mmap returns MAP_FAILED (EPERM). */
+target_factory mmap_exec_self();
+
 } // namespace ac::targets

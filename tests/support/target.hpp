@@ -66,6 +66,12 @@ public:
    * Used to verify writev-style attacks actually mutated the target's buffer. */
   const std::string &observed_flag() const { return observed_flag_; }
   void stop();
+  /* Writes one byte to the child's stdin as a "go" signal. Used by factories
+   * whose target_fn performs the attack AFTER the caller has had a chance to
+   * open a session. The target_fn must call getchar() once before the attack
+   * to synchronise on this byte. Calling release() before stop() is required;
+   * stop() closes stdin (EOF) which is the second synchronisation point. */
+  void release();
 
 private:
   target_info info_{};

@@ -116,6 +116,15 @@ target target::existing(__u32 pid, uintptr_t addr, size_t len) {
   return t;
 }
 
+void target::release() {
+  if (stdin_fd_ >= 0) {
+    /* Write a single arbitrary byte as the "go" signal.
+     * The child's getchar() call before the attack reads this byte. */
+    char go = '\n';
+    (void)write(stdin_fd_, &go, 1);
+  }
+}
+
 void target::stop() {
   if (stopped_ || child_pid_ == 0)
     return;
