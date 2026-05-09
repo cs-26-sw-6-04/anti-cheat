@@ -10,10 +10,10 @@
 
 **Status:** Planning
 
-**Plans:** 4 plans
+**Plans:** 2/4 plans executed
 
 Plans:
 - [x] 01-01-PLAN.md — Design decisions and /proc coverage audit (complete: A1/A2/A3/A6 recorded in docs/design-decisions.md)
-- [ ] 01-02-PLAN.md — inject enforcer end-to-end (bpf hook, enum, factory, tests, CLI)
+- [x] 01-02-PLAN.md — inject enforcer end-to-end (complete: inject.bpf.h, AC_ENF_INJECT=3, mmap_exec_self factory, tests/inject.cpp)
 - [ ] 01-03-PLAN.md — execve enforcer end-to-end (bpf hook, factory, tests)
 - [ ] 01-04-PLAN.md — proc enforcer conditional + docs/testing.md + ac.h comment polish
