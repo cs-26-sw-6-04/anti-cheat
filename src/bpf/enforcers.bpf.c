@@ -13,6 +13,8 @@
  *   - mem:         victim in the ac_protected_root_pid subtree.
  *   - inject:      caller in ac_protected_root_pid subtree, prot & PROT_EXEC,
  *                  file == NULL (anonymous PROT_EXEC mmap = shellcode injection).
+ *   - execve:      caller is descendant (not root) of ac_protected_root_pid;
+ *                  blocks exec of attacker-controlled binaries from the subtree.
  * Domains are disjoint (mem explicitly skips ac_self_pid via its walk), so
  * attribution does not depend on BPF LSM chain ordering.
  */
@@ -22,5 +24,6 @@
 #include "selfprotect.bpf.h"
 #include "mem.bpf.h"
 #include "inject.bpf.h"
+#include "execve.bpf.h"
 
 char LICENSE[] SEC("license") = "GPL";
