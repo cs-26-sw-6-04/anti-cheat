@@ -38,7 +38,12 @@ enum ac_enforcer {
    * subtree (descendants only; the root's own startup exec is exempted).
    * Uses lsm/bprm_check_security hook. */
   AC_ENF_EXECVE = 4,
-  AC_ENF__COUNT = 5,   /* update to 6 if AC_ENF_PROC is added in Wave 4 */
+  /* proc enforcer: blocks open() on /proc/<protected_pid>/* paths not
+   * already covered by ptrace_access_check (status, cmdline, environ).
+   * Uses lsm.s/file_open hook (sleepable variant — required for dentry
+   * inspection). See docs/design-decisions.md A3. */
+  AC_ENF_PROC    = 5,
+  AC_ENF__COUNT  = 6,   /* next value after last defined AC_ENF_* */
 };
 
 enum ac_event_kind {
