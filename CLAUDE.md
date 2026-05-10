@@ -195,7 +195,7 @@ These must not be violated in any implementation:
 
 ## Implementation Notes
 
-- Linux 5.10+ minimum (required for BPF CO-RE via `vmlinux.h` from `/sys/kernel/btf/vmlinux`).
+- Linux 5.11+ minimum (required for BPF CO-RE via `vmlinux.h` from `/sys/kernel/btf/vmlinux`, and for `bpf_get_current_task_btf()` used by inject and execve enforcers).
 - `CAP_BPF` or root is required at **runtime** only, not at compile time.
 - If modifying `common/protocol.h`, update both enforcer and server — struct layout mismatches cause silent data corruption.
 - If adding a new event type to `common/events.h`, add the corresponding `case` in both `enforcer/protocol.c` (`on_detection`) and `server/main.c` (`on_detection`).
