@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <grp.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -24,10 +25,17 @@ static int exec_child(void *user) {
 
   /* Drop root before handing control to the user's program. setuid(ruid)
    * with euid == 0 sets all three (real, effective, saved) uids to ruid;
-   * the program cannot regain root. We never elevated egid or groups
-   * (no setgid bit, no setcap +s) so they already match the caller. */
+   * the program cannot regain root. */
   if (setuid(c->real_uid) != 0) {
     fprintf(stderr, "ac: setuid: %s\n", strerror(errno));
+    return 126;
+  }
+
+  /* Defensively clear supplementary groups regardless of setgid bit or
+   * capabilities. This guards against accidental installation with a setgid
+   * bit or group-based capabilities that would otherwise persist after setuid. */
+  if (setgroups(0, NULL) != 0) {
+    fprintf(stderr, "ac: setgroups: %s\n", strerror(errno));
     return 126;
   }
 
