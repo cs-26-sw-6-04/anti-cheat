@@ -50,13 +50,13 @@ static __always_inline int is_uncovered_proc_file(struct dentry *de) {
   /* "cmdline" c-m-d-l-i-n-e-\0 */
   if (name[0] == 'c' && name[1] == 'm' && name[2] == 'd' &&
       name[3] == 'l' && name[4] == 'i' && name[5] == 'n' &&
-      name[6] == 'e')
+      name[6] == 'e' && name[7] == '\0')
     return 1;
 
   /* "environ" e-n-v-i-r-o-n-\0 */
   if (name[0] == 'e' && name[1] == 'n' && name[2] == 'v' &&
       name[3] == 'i' && name[4] == 'r' && name[5] == 'o' &&
-      name[6] == 'n')
+      name[6] == 'n' && name[7] == '\0')
     return 1;
 
   return 0;
