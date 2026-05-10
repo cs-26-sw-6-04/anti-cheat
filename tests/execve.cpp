@@ -59,17 +59,18 @@ TEST_CASE("execve enforcer blocks exec from protected subtree descendant",
 
 TEST_CASE("execve enforcer does not block root's own startup exec",
           "[execve][negative]") {
-  /* The game's own startup exec (root process exec'ing the binary via
-   * ac_spawn_and_protect) must not be blocked. This test verifies the
-   * root exemption: open a session on flag_secret; no execve deny fires. */
+  /* Smoke test: a normal session where the target does no exec calls must
+   * not produce any AC_ENF_EXECVE events. target::spawn() uses plain fork()
+   * without exec, so the flag_secret child never calls exec after READY.
+   * This test verifies the enforcer produces no spurious events during an
+   * idle session — it does NOT exercise the me == ac_protected_root_pid
+   * exemption path in execve.bpf.h (testing that exemption requires a target
+   * that actually calls execvp so the root exemption branch is reached). */
   SECTION("root startup exec passes") {
     auto t = targets::flag_secret()();
     auto sess = session::open_or_skip(t.info().root_pid);
 
-    /* The flag_secret target does not exec after READY. But it was spawned
-     * via fork+exec internally (exec_child in src/cli). Any exec that fired
-     * during spawn_and_protect must not be AC_ENF_EXECVE from the root.
-     * Drain briefly to catch any stale event. */
+    /* Drain briefly to catch any stale event from session setup. */
     sess.drain();
     auto ev = sess.next_event();
     if (ev.has_value()) {
