@@ -70,6 +70,15 @@ int BPF_PROG(proc_enforce, struct file *file, int ret) {
   if (!ac_protected_root_pid)
     return 0;
 
+  /* Fail-open tradeoff: if any BPF_CORE_READ or bpf_core_read_str call
+   * below returns an error (e.g., transient kernel memory pressure or a
+   * CO-RE relocation miss), the comparison values remain zero-initialised.
+   * All subsequent checks then fail and this function returns 0 — the
+   * syscall is allowed through with no event emitted (fail-open). This
+   * behaviour is an accepted tradeoff: LSM hook context makes these reads
+   * reliable in practice, and adding a dedicated error-counter map is a
+   * future improvement. */
+
   /* Read dentry name chain: /proc/<target_pid>/<file>.
    * For a path /proc/1234/status:
    *   de->d_name.name          == "status"
