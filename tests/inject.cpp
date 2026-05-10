@@ -55,11 +55,14 @@ TEST_CASE("inject enforcer blocks anonymous PROT_EXEC mmap", "[inject][mmap]") {
   }
 }
 
-/* Smoke test: normal library loads during session must not produce inject events.
- * This guards against the inject enforcer accidentally blocking file-backed PROT_EXEC
- * mappings (e.g., ld.so loading shared libraries at startup). The flag_secret target
- * process loads shared libraries during its own startup via exec+ld.so. If the
- * file != NULL exemption in inject.bpf.h is correct, no AC_ENF_INJECT event fires. */
+/* Smoke test: a normal session where the target does no mmap(PROT_EXEC) calls
+ * must not produce any AC_ENF_INJECT events. target::spawn() uses plain fork()
+ * without exec, so the child inherits the parent's already-mapped address space
+ * and ld.so does not run; there are no file-backed PROT_EXEC mappings in the
+ * child. This test therefore verifies that the enforcer produces no spurious
+ * events during an idle session — it does NOT exercise the file != NULL exemption
+ * in inject.bpf.h (testing that exemption requires a target that actually execs
+ * a binary so ld.so maps shared libraries). */
 TEST_CASE("inject enforcer: no spurious events during normal session (smoke)",
           "[inject][mmap][negative]") {
   SECTION("normal session -- no inject events") {
