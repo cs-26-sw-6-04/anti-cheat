@@ -8,12 +8,12 @@
 
 **Depends on:** (none)
 
-**Status:** Executing
+**Status:** Complete
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 - [x] 01-01-PLAN.md — Design decisions and /proc coverage audit (complete: A1/A2/A3/A6 recorded in docs/design-decisions.md)
 - [x] 01-02-PLAN.md — inject enforcer end-to-end (complete: inject.bpf.h, AC_ENF_INJECT=3, mmap_exec_self factory, tests/inject.cpp)
 - [x] 01-03-PLAN.md — execve enforcer end-to-end (complete: execve.bpf.h, lsm/bprm_check_security, exec_child factory, tests/execve.cpp)
-- [ ] 01-04-PLAN.md — proc enforcer conditional + docs/testing.md + ac.h comment polish
+- [x] 01-04-PLAN.md — proc enforcer (lsm.s/file_open, AC_ENF_PROC=5) + docs/testing.md + ac.h comment polish (complete)
