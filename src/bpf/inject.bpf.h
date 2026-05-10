@@ -28,9 +28,8 @@ int BPF_PROG(inject_mmap_enforce, struct file *file,
 
   __u32 me = cur_pid();
   /* mmap_file does not supply a task_struct argument -- retrieve the caller's
-   * task via bpf_get_current_task_btf() (kernel 5.11+). On kernel 5.10
-   * (project minimum) the verifier may reject this; fall back to comparing
-   * me against ac_protected_root_pid directly if that occurs. */
+   * task via bpf_get_current_task_btf() (requires kernel 5.11+, which is
+   * the project minimum). */
   struct task_struct *t = bpf_get_current_task_btf();
 
   if (!is_in_protected_subtree(t))
