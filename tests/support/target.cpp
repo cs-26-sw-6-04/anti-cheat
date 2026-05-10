@@ -121,7 +121,12 @@ void target::release() {
     /* Write a single arbitrary byte as the "go" signal.
      * The child's getchar() call before the attack reads this byte. */
     char go = '\n';
-    (void)write(stdin_fd_, &go, 1);
+    ssize_t n = write(stdin_fd_, &go, 1);
+    if (n != 1) {
+      /* Child already died or pipe broken; stop() will reap it. */
+      close(stdin_fd_);
+      stdin_fd_ = -1;
+    }
   }
 }
 
