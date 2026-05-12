@@ -8,6 +8,9 @@
 
 #include "common.bpf.h"
 
+#ifndef PROT_EXEC
+#define PROT_EXEC 0x4
+#endif
 SEC("lsm/mmap_file")
 int BPF_PROG(inject_mmap_enforce, struct file *file,
              unsigned long reqprot, unsigned long prot,

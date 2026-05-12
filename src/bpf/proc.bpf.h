@@ -39,7 +39,8 @@ static __always_inline int is_uncovered_proc_file(struct dentry *de) {
   /* "cmdline" is 7 chars; "environ" is 7 chars; "status" is 6 chars.
    * Read 8 bytes to fit all of them (7 chars + NUL). */
   char name[8] = {};
-  bpf_core_read_str(name, sizeof(name), BPF_CORE_READ(de, d_name.name));
+  const unsigned char *name_ptr = BPF_CORE_READ(de, d_name.name);
+  bpf_core_read_str(name, sizeof(name), name_ptr);
 
   /* "status"  s-t-a-t-u-s-\0 */
   if (name[0] == 's' && name[1] == 't' && name[2] == 'a' &&
@@ -90,8 +91,8 @@ int BPF_PROG(proc_enforce, struct file *file, int ret) {
 
   /* Check grandparent name == "proc" (4 bytes + NUL). */
   char gp_name[8] = {};
-  bpf_core_read_str(gp_name, sizeof(gp_name),
-                    BPF_CORE_READ(gp, d_name.name));
+  const unsigned char *gp_name_ptr = BPF_CORE_READ(gp, d_name.name);
+  bpf_core_read_str(gp_name, sizeof(gp_name), gp_name_ptr);
   if (gp_name[0] != 'p' || gp_name[1] != 'r' ||
       gp_name[2] != 'o' || gp_name[3] != 'c' || gp_name[4] != '\0')
     return 0;
@@ -100,8 +101,8 @@ int BPF_PROG(proc_enforce, struct file *file, int ret) {
   char expected[12] = {};
   pid_to_str(ac_protected_root_pid, expected, sizeof(expected));
   char parent_name[12] = {};
-  bpf_core_read_str(parent_name, sizeof(parent_name),
-                    BPF_CORE_READ(parent, d_name.name));
+  const unsigned char *parent_name_ptr = BPF_CORE_READ(parent, d_name.name);
+  bpf_core_read_str(parent_name, sizeof(parent_name), parent_name_ptr);
 
   /* BPF cannot call strncmp directly in older kernels — compare byte by byte
    * for up to 11 decimal digits. */
