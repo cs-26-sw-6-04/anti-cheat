@@ -9,10 +9,21 @@ from conan.tools.cmake import CMakeDeps, CMakeToolchain
 class AntiCheatConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
 
+    # `ac` is linked fully static (see src/cli/CMakeLists.txt), so libbpf and
+    # its transitive deps must produce static archives.
+    default_options = {
+        "libbpf/*:shared": False,
+        "elfutils/*:shared": False,
+        "zlib/*:shared": False,
+    }
+
     def layout(self):
         build_type = str(self.settings.build_type).lower()
         self.folders.build = f"build/{build_type}-conan"
         self.folders.generators = f"{self.folders.build}/conan"
+
+    def requirements(self):
+        self.requires("libbpf/1.3.0")
 
     def build_requirements(self):
         self.test_requires("catch2/3.11.0")
