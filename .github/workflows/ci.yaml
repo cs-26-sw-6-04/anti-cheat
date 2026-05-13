@@ -20,7 +20,7 @@ jobs:
     name: ${{ matrix.build_type }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-25.10]
         preset: [conan-debug, conan-release]
@@ -33,7 +33,15 @@ jobs:
     # System dependencies (apt packages, bpftool, kernel BPF LSM) are
     # provisioned on the self-hosted runner VM out-of-band. See docs/ci.md.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Cache Conan packages
+        uses: actions/cache@v5
+        with:
+          path: .conan2
+          key: conan-${{ runner.os }}-${{ matrix.build_type }}-${{ hashFiles('conanfile.py', '.mise.toml') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ matrix.build_type }}-
 
       - name: Configure
         run: |

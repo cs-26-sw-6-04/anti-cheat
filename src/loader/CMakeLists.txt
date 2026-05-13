@@ -23,9 +23,7 @@ target_compile_definitions(ac_loader_runtime
 
 target_link_libraries(ac_loader_runtime
     PUBLIC
-        PkgConfig::LIBBPF
-        elf
-        z
+        libbpf::libbpf
 )
 
 add_dependencies(ac_loader_runtime enforcers_skeleton)
