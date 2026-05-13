@@ -35,6 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: .conan2
+          key: conan-${{ runner.os }}-${{ matrix.build_type }}-${{ hashFiles('conanfile.py', '.mise.toml') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ matrix.build_type }}-
+
       - name: Configure
         run: |
           mise exec -- conan profile detect --force
