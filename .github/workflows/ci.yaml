@@ -20,7 +20,7 @@ jobs:
     name: ${{ matrix.build_type }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-25.10]
         preset: [conan-debug, conan-release]
