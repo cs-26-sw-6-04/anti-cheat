@@ -10,10 +10,16 @@ class AntiCheatConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
 
     # `ac` is linked fully static (see src/cli/CMakeLists.txt), so libbpf and
-    # its transitive deps must produce static archives.
+    # its transitive deps must produce static archives. We also turn off
+    # elfutils' compressed-DWARF backends (bzip2/xz/zstd) because libbpf only
+    # uses the plain libelf parsing API — disabling them drops three whole
+    # builds from the dep graph.
     default_options = {
         "libbpf/*:shared": False,
         "elfutils/*:shared": False,
+        "elfutils/*:with_bzlib": False,
+        "elfutils/*:with_lzma": False,
+        "elfutils/*:with_zstd": False,
         "zlib/*:shared": False,
     }
 
