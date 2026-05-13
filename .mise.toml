@@ -6,5 +6,5 @@
 CONAN_HOME = "{{ config_root }}/.conan2"
 
 [tools]
-"pipx:conan" = "2.26.2"
+"pipx:conan" = "2.28.1"
 "pipx:reuse" = "6.2.0"

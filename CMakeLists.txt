@@ -42,8 +42,7 @@ find_program(BPFTOOL_EXECUTABLE
 )
 
 # --- Dependencies ---
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBBPF REQUIRED IMPORTED_TARGET libbpf)
+find_package(libbpf REQUIRED) # from Conan
 find_package(VmlinuxH REQUIRED) # For CO-RE
 
 # --- CMake Modules ---

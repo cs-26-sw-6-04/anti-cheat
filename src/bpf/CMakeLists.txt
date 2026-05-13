@@ -2,10 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
+get_target_property(_libbpf_includes libbpf::libbpf INTERFACE_INCLUDE_DIRECTORIES)
+
 set(BPF_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${PROJECT_SOURCE_DIR}/src/shared"
-    ${LIBBPF_INCLUDE_DIRS}
+    ${_libbpf_includes}
 )
 
 # Debian/Ubuntu ship asm/ under a multiarch path that clang -target bpf does
