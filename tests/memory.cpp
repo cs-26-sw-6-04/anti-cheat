@@ -123,6 +123,32 @@ TEST_CASE("memory enforcer blocks PTRACE_ATTACH", "[mem][attach]") {
  * target's address space, not whether open() returns -1. Under the mem
  * enforcer the read must not deliver the flag — either the open is denied,
  * the seek is denied, or the read returns no data. */
+/* Subtree-internal access must NOT fire AC_ENF_MEMORY: the threat model
+ * scopes §3.1 memory confidentiality to *external* attackers. Without this
+ * regression test, a future change that drops the in-subtree check (or never
+ * adds it) would silently break legitimate workloads — e.g. Minecraft's JVM
+ * threads reading sibling /proc/<pid>/maps, which fired the enforcer 600+
+ * times per launch before the fix. */
+TEST_CASE("memory enforcer allows process_vm_readv inside the protected subtree",
+          "[mem][subtree-internal]") {
+  auto t = targets::flag_secret_subtree_attacker()();
+  auto sess = session::open_or_skip(t.info().root_pid);
+
+  t.release();
+
+  /* Drain before stop(): stop() closes stdin which lets the intermediate
+   * (subtree root) exit, after which ac_poll returns -ESRCH. The intermediate
+   * deliberately stays alive on stdin past the FLAG print so the session
+   * outlives the assertion below. */
+  sess.drain();
+  REQUIRE_FALSE(sess.next_event().has_value());
+
+  t.stop();
+  /* If the enforcer had blocked the in-subtree process_vm_readv, the FLAG
+   * line would be missing and observed_flag would be empty. */
+  REQUIRE(t.observed_flag() == t.info().flag);
+}
+
 TEST_CASE("memory enforcer blocks /proc/<pid>/mem flag exfil",
           "[mem][procmem]") {
   run_scenario({

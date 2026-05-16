@@ -22,6 +22,13 @@ int BPF_PROG(mem_enforce, struct task_struct *child, unsigned int mode,
   if (!is_in_protected_subtree(child))
     return 0;
 
+  /* Subtree is one trust domain: the §3.1 memory-confidentiality property
+   * is about *external* attackers, so descendant->descendant traffic is
+   * out of scope. Minecraft's own JVM threads otherwise fire this hook 600+
+   * times per launch reading their siblings' /proc/<pid>/maps. */
+  if (is_in_protected_subtree(bpf_get_current_task_btf()))
+    return 0;
+
   emit_deny(AC_ENF_MEMORY, me, victim);
   return -EPERM;
 }
