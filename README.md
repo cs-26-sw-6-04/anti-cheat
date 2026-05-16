@@ -14,12 +14,27 @@ All BPF LSM programs live in `src/bpf/` and are loaded as one combined object. S
 
 - `selfprotect.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_SELFPROTECT`. Blocks ptrace/process_vm_*/`/proc/<pid>/mem` against the loader itself.
 - `mem.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_MEMORY`. Blocks the same operations against any process in the protected subtree.
-- `inject.bpf.h` — `lsm/mmap_file` → `AC_ENF_INJECT`. Blocks anonymous `PROT_EXEC` mmap from inside the subtree (shellcode injection). File-backed `PROT_EXEC` (ld.so library loads) is allowed. Assumes no JIT runtime in the target (V8, Mono, JVM, LuaJIT, Wine all allocate anonymous `PROT_EXEC` legitimately).
 
 Intentionally **not** enforced:
 
-- `execve` from descendants. Considered and rejected: doesn't defend a §3.1 property (the game-as-root re-execing is the integrity case, and the current shape would have to *allow* that to keep startup working). Breaks Wine, Steam/Proton, shell scripts, and every launcher chain on contact — confirmed empirically with `ac wine winemine.exe` failing at `wineserver` exec.
+- Anonymous `PROT_EXEC` mmap (shellcode injection from inside the subtree). Considered and rejected: the canonical W^X bypass (`mmap(RW)` + `mprotect(+X)`) sidesteps `mmap_file` entirely, so a serious attacker is unaffected; the only callers it does catch are legitimate ones that take the one-step shape — Wine's PE loader and HotSpot JVM's code cache. Confirmed empirically: `ac wine winemine.exe` died on a `create_view` assertion after the first `mmap(PROT_EXEC)` was denied; `ac java -version` printed `os::commit_memory ... Operation not permitted` and exited 1. With the enforcer removed, both run cleanly.
+- `execve` from descendants. Doesn't defend a §3.1 property (the game-as-root re-execing is the integrity case, and the current shape would have to *allow* that to keep startup working). Breaks Wine, Steam/Proton, shell scripts, and every launcher chain on contact.
 - `/proc/<pid>/{status,cmdline,environ}`. None of them leak memory content — `/proc/<pid>/mem` is the only path that does, and `AC_ENF_MEMORY` already gates it. Blocking these would break `ps`, `htop`, `gnome-system-monitor`, and every other tool that scans `/proc`.
+
+## Examples
+
+Install once: `sudo chown root:root build/<preset>/src/cli/ac && sudo chmod u+s !$`. After that, run as your normal user.
+
+```sh
+ac glxgears                       # native C/OpenGL
+ac java -version                  # HotSpot JVM
+ac luajit -e "for i=1,1e5 do end" # LuaJIT
+ac node -e "console.log(42)"      # V8
+ac wine cmd /c "echo hello"       # Wine non-GUI
+ac wine /usr/lib/wine/x86_64-windows/winemine.exe   # Wine GUI
+```
+
+All of the above run with zero ac deny events on the protected process itself. External processes (gnome-shell, system monitors) may produce one-off `AC_ENF_MEMORY` denials when they probe `/proc/<pid>/maps` for window-to-app matching; those are correct enforcement and harmless — the protected program keeps running.
 
 ## Notes
 

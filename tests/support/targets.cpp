@@ -11,7 +11,6 @@
 #include <string>
 
 #include <signal.h>
-#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -128,47 +127,6 @@ target_factory ac_self() {
     t.set_flag(initial);
     /* root_pid = 0 by default: self-protect tests run without subtree
      * registration; selfprotect covers the loader pid via rodata. */
-    return t;
-  };
-}
-
-target_factory mmap_exec_self() {
-  return []() {
-    auto t = target::spawn([] {
-      /* Allow sibling attacker to ptrace us (matches flag_secret pattern). */
-      (void)prctl(PR_SET_PTRACER, static_cast<unsigned long>(-1), 0, 0, 0);
-
-      /* Print READY. addr=0, len=0 -- this target has no secret buffer;
-       * the enforcement signal is the mmap result, not a data exfil. */
-      printf("READY %u 0 0\n", (unsigned)getpid());
-      fflush(stdout);
-
-      /* SYNCHRONISATION: block until the test writes the "go" signal byte.
-       * This ensures the session is open before the mmap is attempted.
-       * getchar() reads the single byte written by t.release(). */
-      getchar();
-
-      /* Perform the inject attack from inside the protected process.
-       * The enforcer fires on this call when a session is active. */
-      void *p = mmap(NULL, 4096, PROT_READ | PROT_EXEC,
-                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-      int blocked = (p == MAP_FAILED) ? 1 : 0;
-      if (p != MAP_FAILED)
-        munmap(p, 4096);
-
-      /* Wait for stop() to close stdin (EOF) before printing FLAG. */
-      while (getchar() != EOF) {
-      }
-
-      /* FLAG line encodes the outcome. "mmap_ok" = succeeded (no enforcer).
-       * "mmap_blocked" = denied (enforcer active). */
-      printf("FLAG %s\n", blocked ? "mmap_blocked" : "mmap_ok");
-      fflush(stdout);
-      return blocked; /* 0 = attack succeeded (no enforcer); 1 = blocked */
-    });
-    /* root_pid == pid: the target process is its own subtree root. */
-    t.set_root_pid(t.info().pid);
-    t.set_flag("mmap_ok"); /* expected flag when no enforcer */
     return t;
   };
 }
