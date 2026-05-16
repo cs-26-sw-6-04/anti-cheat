@@ -17,11 +17,8 @@ real target process, with and without the enforcers active.
 tests/
   support/          # session, target, run_attacker, run_scenario, matchers
   memory.cpp        # memory enforcer against the single protected target
-  subtree.cpp       # subtree coverage: descendants in, outsiders out
+  subtree.cpp      # subtree coverage: descendants in, outsiders out
   self_protect.cpp  # AC self-protection
-  inject.cpp        # inject enforcer: anonymous PROT_EXEC mmap from inside subtree
-  execve.cpp        # execve enforcer: exec from subtree descendant
-  proc.cpp          # proc enforcer: open of /proc/<pid>/{status,cmdline,environ}
 ```
 
 One executable (`ac_tests`). Each `TEST_CASE` opens its own `ac::session`;
@@ -41,38 +38,6 @@ hook with the same `PTRACE_MODE_ATTACH_REALCREDS` mode bits; the LSM layer
 does not distinguish them, so splitting attribution between "memory access"
 and "ptrace attach" at this hook would be dishonest. `AC_ENF_MEMORY` owns
 the entire subtree-access domain and fires for all of the above.
-
-- **`AC_ENF_INJECT`**: fires when a process **inside the protected subtree**
-  maps anonymous memory with `PROT_EXEC`
-  (`mmap(NULL, ..., PROT_EXEC, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)`).
-  Hook: `lsm/mmap_file`. File-backed `PROT_EXEC` mappings (normal library
-  loads by ld.so) are explicitly exempted (`file != NULL` check). Both
-  attacker and victim `pid` fields in the event are the exec'ing process's
-  own pid (mmap maps into the caller's own address space).
-
-- **`AC_ENF_EXECVE`**: fires when a **descendant** of the protected root
-  calls `exec()`. Hook: `lsm/bprm_check_security`. The root process's own
-  startup exec is exempted (`me == ac_protected_root_pid` check), so the
-  game binary launching via `ac_spawn_and_protect` is not blocked.
-  Descendants (forked children of the game) must not re-exec without
-  permission. Both `pid` and `target_pid` in the event are the exec'ing
-  descendant's pid.
-
-- **`AC_ENF_PROC`**: fires when any process opens a file under
-  `/proc/<protected_pid>/` that is NOT already blocked by
-  `ptrace_access_check`. Hook: `lsm.s/file_open` (sleepable variant —
-  required for dentry path inspection). Only the three paths confirmed
-  uncovered by the A3 audit trigger this enforcer: `status`, `cmdline`,
-  `environ`. Path matching uses dentry name chain inspection (grandparent
-  name == "proc", parent name == target pid as decimal string, file name in
-  uncovered set). See docs/design-decisions.md A3 for the audit rationale.
-
-  **Note:** A3 results are inferred from Linux kernel source analysis.
-  Empirical verification on a Linux host with `CONFIG_BPF_LSM=y` is pending.
-  If `status`, `cmdline`, or `environ` turn out to be covered by
-  `ptrace_access_check` on the target kernel, the proc enforcer will fire
-  redundantly (defence in depth — no functional harm, but attribution will
-  show AC_ENF_PROC instead of AC_ENF_MEMORY).
 
 ## Writing a Test
 
