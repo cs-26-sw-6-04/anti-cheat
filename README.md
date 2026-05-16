@@ -14,10 +14,12 @@ All BPF LSM programs live in `src/bpf/` and are loaded as one combined object. S
 
 - `selfprotect.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_SELFPROTECT`. Blocks ptrace/process_vm_*/`/proc/<pid>/mem` against the loader itself.
 - `mem.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_MEMORY`. Blocks the same operations against any process in the protected subtree.
-- `inject.bpf.h` — `lsm/mmap_file` → `AC_ENF_INJECT`. Blocks anonymous `PROT_EXEC` mmap from inside the subtree (shellcode injection). File-backed `PROT_EXEC` (ld.so library loads) is allowed.
-- `execve.bpf.h` — `lsm/bprm_check_security` → `AC_ENF_EXECVE`. Blocks `exec()` from a descendant of the protected root. The root's own startup exec is exempt.
+- `inject.bpf.h` — `lsm/mmap_file` → `AC_ENF_INJECT`. Blocks anonymous `PROT_EXEC` mmap from inside the subtree (shellcode injection). File-backed `PROT_EXEC` (ld.so library loads) is allowed. Assumes no JIT runtime in the target (V8, Mono, JVM, LuaJIT, Wine all allocate anonymous `PROT_EXEC` legitimately).
 
-`/proc/<pid>/{status,cmdline,environ}` are intentionally not enforced: none of them leak game memory content (the §3.1 memory-confidentiality property covers `/proc/<pid>/mem`, which `AC_ENF_MEMORY` already gates), and blocking them would break `ps`, `htop`, `gnome-system-monitor`, and every other tool that scans `/proc`.
+Intentionally **not** enforced:
+
+- `execve` from descendants. Considered and rejected: doesn't defend a §3.1 property (the game-as-root re-execing is the integrity case, and the current shape would have to *allow* that to keep startup working). Breaks Wine, Steam/Proton, shell scripts, and every launcher chain on contact — confirmed empirically with `ac wine winemine.exe` failing at `wineserver` exec.
+- `/proc/<pid>/{status,cmdline,environ}`. None of them leak memory content — `/proc/<pid>/mem` is the only path that does, and `AC_ENF_MEMORY` already gates it. Blocking these would break `ps`, `htop`, `gnome-system-monitor`, and every other tool that scans `/proc`.
 
 ## Notes
 

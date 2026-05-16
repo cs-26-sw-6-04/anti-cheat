@@ -54,8 +54,6 @@ static const char *enforcer_name(unsigned int id) {
     return "memory";
   case AC_ENF_INJECT:
     return "inject";
-  case AC_ENF_EXECVE:
-    return "execve";
   default:
     return "?";
   }
