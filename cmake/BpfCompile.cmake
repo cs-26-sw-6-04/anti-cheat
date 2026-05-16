@@ -23,7 +23,9 @@
 # flags so that CMake emits a correct entry in compile_commands.json for
 # clangd and other tooling.
 
-cmake_minimum_required(VERSION 3.16)
+# 3.21 is required for DEPFILE on add_custom_command (header dep tracking
+# below) to work with both Makefile and Ninja generators.
+cmake_minimum_required(VERSION 3.21)
 
 foreach(_tool CLANG_EXECUTABLE BPFTOOL_EXECUTABLE)
   if(NOT ${_tool})
@@ -39,6 +41,7 @@ function(add_bpf_object TARGET SOURCE)
   endif()
 
   set(output_o "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}.bpf.o")
+  set(depfile "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}.bpf.o.d")
 
   set(flags -target bpf -g -O2
         -Wno-missing-declarations
@@ -61,10 +64,16 @@ function(add_bpf_object TARGET SOURCE)
     list(APPEND clang_cmd "-D${d}")
   endforeach()
 
+  # -MMD/-MF emits a make-style depfile listing every #include'd header.
+  # CMake's DEPFILE wires it back so a header edit triggers a rebuild;
+  # without this, changes to a .bpf.h would silently produce a stale .o.
   add_custom_command(
         OUTPUT  "${output_o}"
-        COMMAND "${CLANG_EXECUTABLE}" ${clang_cmd} -c -o "${output_o}" "${SOURCE}"
+        COMMAND "${CLANG_EXECUTABLE}" ${clang_cmd}
+                -MMD -MF "${depfile}"
+                -c -o "${output_o}" "${SOURCE}"
         DEPENDS "${SOURCE}" ${BPF_VMLINUX_H}
+        DEPFILE "${depfile}"
         VERBATIM
         COMMENT "Compiling BPF object: ${TARGET}.bpf.o"
     )
