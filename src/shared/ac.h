@@ -31,10 +31,7 @@ enum ac_enforcer {
    * reliable attribution split is not possible at this layer. See
    * docs/testing.md. */
   AC_ENF_MEMORY = 2,
-  /* inject enforcer: blocks anonymous PROT_EXEC mmap (shellcode injection)
-   * from within the protected subtree. Uses lsm/mmap_file hook. */
-  AC_ENF_INJECT = 3,
-  AC_ENF__COUNT = 4,
+  AC_ENF__COUNT = 3,
 };
 
 enum ac_event_kind {

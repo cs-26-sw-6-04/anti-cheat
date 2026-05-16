@@ -51,8 +51,6 @@ static const char *enforcer_name(unsigned int id) {
     return "selfprotect";
   case AC_ENF_MEMORY:
     return "memory";
-  case AC_ENF_INJECT:
-    return "inject";
   default:
     return "?";
   }
