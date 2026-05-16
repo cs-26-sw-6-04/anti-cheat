@@ -31,6 +31,21 @@ path = "src/shared/**"
 SPDX-FileCopyrightText = "cs-26-sw-6-04 <cs-26-sw-6-04@student.aau.dk>"
 SPDX-License-Identifier = "LGPL-2.1-only"
 
+# Vendored gaffe23/linux-inject. Upstream and adapter files in this tree
+# are both GPL-2.0-or-later.
+[[annotations]]
+path = "tests/vendor/linux-inject/**"
+SPDX-FileCopyrightText = ["2015 Tyler Colgan", "cs-26-sw-6-04 <cs-26-sw-6-04@student.aau.dk>"]
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# real_cheat.cpp statically links the GPL-2.0+ injector, so pin it to
+# GPL-2.0-only (allowed because upstream is "or later"). The rest of
+# tests/** stays LGPL-2.1-only.
+[[annotations]]
+path = "tests/real_cheat.cpp"
+SPDX-FileCopyrightText = "cs-26-sw-6-04 <cs-26-sw-6-04@student.aau.dk>"
+SPDX-License-Identifier = "GPL-2.0-only"
+
 [[annotations]]
 path = "tests/**"
 SPDX-FileCopyrightText = "cs-26-sw-6-04 <cs-26-sw-6-04@student.aau.dk>"
