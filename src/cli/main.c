@@ -25,19 +25,18 @@ struct exec_ctx {
 static int exec_child(void *user) {
   struct exec_ctx *c = user;
 
+  /* Clear supplementary groups while we still have CAP_SETGID. setuid below
+   * drops capabilities, so doing this after setuid would fail with EPERM. */
+  if (setgroups(0, NULL) != 0) {
+    fprintf(stderr, "ac: setgroups: %s\n", strerror(errno));
+    return 126;
+  }
+
   /* Drop root before handing control to the user's program. setuid(ruid)
    * with euid == 0 sets all three (real, effective, saved) uids to ruid;
    * the program cannot regain root. */
   if (setuid(c->real_uid) != 0) {
     fprintf(stderr, "ac: setuid: %s\n", strerror(errno));
-    return 126;
-  }
-
-  /* Defensively clear supplementary groups regardless of setgid bit or
-   * capabilities. This guards against accidental installation with a setgid
-   * bit or group-based capabilities that would otherwise persist after setuid. */
-  if (setgroups(0, NULL) != 0) {
-    fprintf(stderr, "ac: setgroups: %s\n", strerror(errno));
     return 126;
   }
 
