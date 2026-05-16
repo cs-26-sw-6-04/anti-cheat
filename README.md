@@ -54,6 +54,24 @@ Tradeoff: `/proc/<pid>/{maps,smaps,auxv,environ}` become readable by any local u
 
 Not whitelisting any binary, not trusting any caller identity — just being honest about which procfs path is actually the exfil channel.
 
+## Known Limitation: detached crash-reporter helpers
+
+Out-of-process crash reporters intentionally detach from their parent so they survive the parent's death and can capture post-mortem state. The pattern: spawn a helper, `setsid()` (or double-fork), let it be reparented to PID 1, then `ptrace`/`process_vm_readv` the parent on demand to produce a stack trace or core dump. Examples we've hit: Chromium's `crashpad_handler` (used by every Chromium/Electron app) and the Fabric mod `CrashAssistant`, which launches a sibling Java process that reads Minecraft's `/proc/<pid>/maps` for stack symbolication.
+
+`AC_ENF_MEMORY` denies these because subtree membership is decided by walking `task->real_parent`, and the detached helper's chain terminates at PID 1 without reaching the protected root. The protected app keeps running; what you lose is the helper's ability to produce a useful post-mortem when the app does crash.
+
+### Possible fix
+
+Replace the ancestor walk with an explicit membership map, populated at fork time:
+
+1. Attach a BPF program to the `sched_process_fork` tracepoint. When the parent's tgid is in the map (or equals `ac_protected_root_pid`), insert the child's tgid.
+2. Attach to `sched_process_exit` to remove tgids on death.
+3. `mem_enforce` checks the hash map instead of walking ancestry.
+
+This catches the parent → child link at the moment of fork, before the child has any chance to `setsid` and break the topological relationship. Tradeoffs: stateful enforcement (map size scales with live descendant count, needs a sane cap), and a seed-time gap if `ac_open` is called against an already-running root with existing descendants — solvable by enumerating `/proc/<root>/task/*/children` at attach time.
+
+Still no whitelist and no binary trust — the rule is "anything ever forked from the root counts as part of the root," which the kernel can observe directly.
+
 ## Notes
 
 `vmlinux.h` is generated automatically from `/sys/kernel/btf/vmlinux`.
