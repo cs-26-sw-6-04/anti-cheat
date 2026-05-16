@@ -12,8 +12,8 @@ BPF LSM programs must be loaded, attached, and triggered against the real kernel
 
 Each test is a declarative spec passed to `run_scenario`, which always executes two sections:
 
-1. **attack succeeds (no enforcer)** — no session. The attack must succeed *and* `verify_success` must confirm the side-effect actually happened (bytes exfiltrated, memory mutated). Exit code alone is not enough: a silently-failed syscall would otherwise look like a pass.
-2. **protected** — a session is opened first and the attack must fail with the correct enforcer attributing it.
+1. **attack succeeds (no enforcer)**: no session. The attack must succeed *and* `verify_success` must confirm the side-effect actually happened (bytes exfiltrated, memory mutated). Exit code alone is not enough: a silently-failed syscall would otherwise look like a pass.
+2. **protected**: a session is opened first and the attack must fail with the correct enforcer attributing it.
 
 The two halves answer different questions: section 1 proves the test exercises a real attack vector on this kernel, section 2 proves the enforcer denies it. Without section 1, a no-op test (e.g. `return 1` unconditionally) would pass the "protected" check.
 
@@ -35,4 +35,4 @@ ctest --preset conan-debug                              # baseline only
 sudo ctest --preset conan-debug --output-on-failure     # with live BPF
 ```
 
-Without root, the "protected" section skips cleanly via Catch2 `SKIP`. The "attack succeeds" section still runs and must pass — that pre-flight check proves the attack actually works on this kernel before we claim the enforcer blocked it.
+Without root, the "protected" section skips cleanly via Catch2 `SKIP`. The "attack succeeds" section still runs and must pass; that pre-flight check proves the attack actually works on this kernel before we claim the enforcer blocked it.
