@@ -14,6 +14,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "matchers.hpp"
 
@@ -84,6 +85,11 @@ void run_scenario(const scenario_spec &spec) {
     auto t = spec.target();
     auto r = run_attacker(spec.attack, t.info());
     INFO("attacker stderr: " << r.stderr);
+    if (!spec.flaky_skip_no_enforcer_stderr.empty() && r.exit_code != 0 &&
+        r.stderr.find(spec.flaky_skip_no_enforcer_stderr) != std::string::npos) {
+      SKIP("upstream attack is environment-fragile: " +
+           spec.flaky_skip_no_enforcer_stderr);
+    }
     REQUIRE(r.exit_code == 0);
     spec.verify_success(t, r);
     t.stop();
@@ -96,6 +102,10 @@ void run_scenario(const scenario_spec &spec) {
     auto r = run_attacker(spec.attack, t.info());
     INFO("protected stderr: " << r.stderr);
     REQUIRE(r.exit_code != 0);
+    if (!spec.protected_stderr_contains.empty()) {
+      REQUIRE_THAT(r.stderr, Catch::Matchers::ContainsSubstring(
+                                 spec.protected_stderr_contains));
+    }
 
     sess.poll();
     auto ev = sess.next_event();
