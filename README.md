@@ -6,24 +6,20 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 # anti-cheat
 
-Anti-cheat using libbpf and BPF CO-RE (Compile Once, Run Everywhere).
+Anti-cheat using libbpf and BPF CO-RE.
 
 ## Enforcers
 
-All BPF LSM programs live in `src/bpf/` and are loaded as one combined object. See each header for motivation and filter logic.
+Two LSM programs, both hooked on `ptrace_access_check`:
 
-- `selfprotect.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_SELFPROTECT`. Blocks ptrace/process_vm_*/`/proc/<pid>/mem` against the loader itself.
-- `mem.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_MEMORY`. Blocks the same operations against any process in the protected subtree.
+- `AC_ENF_SELFPROTECT` — denies anything that would let an attacker reach the loader process (ptrace, `process_vm_*`, opens of the loader's procfs memory files).
+- `AC_ENF_MEMORY` — same denial set, scoped to any task in the protected subtree (root + descendants, walked via `task->real_parent`).
 
-Intentionally **not** enforced:
-
-- Anonymous `PROT_EXEC` mmap (shellcode injection from inside the subtree). Considered and rejected: the canonical W^X bypass (`mmap(RW)` + `mprotect(+X)`) sidesteps `mmap_file` entirely, so a serious attacker is unaffected; the only callers it does catch are legitimate ones that take the one-step shape — Wine's PE loader and HotSpot JVM's code cache. Confirmed empirically: `ac wine winemine.exe` died on a `create_view` assertion after the first `mmap(PROT_EXEC)` was denied; `ac java -version` printed `os::commit_memory ... Operation not permitted` and exited 1. With the enforcer removed, both run cleanly.
-- `execve` from descendants. Doesn't defend a §3.1 property (the game-as-root re-execing is the integrity case, and the current shape would have to *allow* that to keep startup working). Breaks Wine, Steam/Proton, shell scripts, and every launcher chain on contact.
-- `/proc/<pid>/{status,cmdline,environ}`. None of them leak memory content — `/proc/<pid>/mem` is the only path that does, and `AC_ENF_MEMORY` already gates it. Blocking these would break `ps`, `htop`, `gnome-system-monitor`, and every other tool that scans `/proc`.
+The threat model is in `SCOPE.md`. The two enforcers cover the only attack vectors there that the kernel exposes a usable hook for. Everything else was considered and dropped — see the commit log for `proc`, `execve`, and `inject` for the empirical reasoning behind each removal.
 
 ## Examples
 
-Install once: `sudo chown root:root build/<preset>/src/cli/ac && sudo chmod u+s !$`. After that, run as your normal user.
+Install once: `sudo chown root:root build/<preset>/src/cli/ac && sudo chmod u+s !$`. Then run as your normal user — `ac` will drop privileges before exec'ing the target.
 
 ```sh
 ac glxgears                       # native C/OpenGL
@@ -34,7 +30,29 @@ ac wine cmd /c "echo hello"       # Wine non-GUI
 ac wine /usr/lib/wine/x86_64-windows/winemine.exe   # Wine GUI
 ```
 
-All of the above run with zero ac deny events on the protected process itself. External processes (gnome-shell, system monitors) may produce one-off `AC_ENF_MEMORY` denials when they probe `/proc/<pid>/maps` for window-to-app matching; those are correct enforcement and harmless — the protected program keeps running.
+All run with zero deny events on the protected process itself.
+
+## Known Limitation: GNOME window-to-app mapping
+
+When the protected app's window appears, `gnome-shell` (and similar compositors) reads `/proc/<pid>/maps` to identify the binary for icon lookup and `.desktop` matching. That read goes through `ptrace_access_check` with `PTRACE_MODE_READ`, and `AC_ENF_MEMORY` denies it. The app keeps running, but the window may show a generic icon and the activities overview may misattribute it.
+
+`/proc/<pid>/maps` exposes memory *layout* (mapping addresses, library list). It does **not** expose memory contents — `/proc/<pid>/mem` is the only path that does, and it shares the same LSM hook with the same mode bits. So today's `mem.bpf.h` denies both, and we lose the UX side to protect the exfil side.
+
+### Possible fix without trusting any binary
+
+Split the enforcement across two hooks instead of one:
+
+1. Relax `mem.bpf.h` (`ptrace_access_check`) to deny only `PTRACE_MODE_ATTACH`. That still blocks `ptrace(PTRACE_ATTACH)`, `process_vm_readv`, and `process_vm_writev` — all the attach-mode operations. `PTRACE_MODE_READ` opens (maps, smaps, auxv, mem, environ) fall through.
+2. Add a small enforcer on `lsm/file_open` that denies opens of `/proc/<protected_pid>/mem` specifically. Detection uses kernel structure inspection, no userspace identity:
+   - `file->f_inode->i_sb->s_type->name == "proc"` (this is the superblock's filesystem-type name, not a dentry walk — robust across kernels, and avoids the trap our earlier proc enforcer hit, where procfs's root dentry is named `"/"` not `"proc"`).
+   - `file->f_path.dentry->d_name.name == "mem"`.
+   - `dentry->d_parent->d_name.name == decimal(ac_protected_root_pid)`.
+
+After the split, `gnome-shell`'s `/proc/<pid>/maps` read goes through; an attacker's `/proc/<pid>/mem` open is still denied, and ptrace/`process_vm_*` are still denied at the original hook.
+
+Tradeoff: `/proc/<pid>/{maps,smaps,auxv,environ}` become readable by any local user (process memory *layout* leaks, not contents). Layout alone doesn't enable read/write — those still need `/proc/<pid>/mem` or `process_vm_*`, both still blocked. For privacy of env vars, kernel DAC already restricts `/proc/<pid>/environ` to the owner.
+
+Not whitelisting any binary, not trusting any caller identity — just being honest about which procfs path is actually the exfil channel.
 
 ## Notes
 
