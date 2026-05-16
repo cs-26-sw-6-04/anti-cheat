@@ -69,6 +69,16 @@ Descendants of the protected root that outlive it are not covered by `PR_SET_PDE
 
 Out-of-band mitigations (server-side liveness checks, service supervision, heartbeat-gated sessions) are expected to detect loader absence; they are orthogonal to the in-kernel protections described here.
 
+### Hostile BPF reads user memory without invoking LSM ptrace hooks
+
+A BPF program loaded by root can call `bpf_copy_from_user_task` to read another task's userspace memory. The helper uses `access_process_vm` and does **not** invoke `security_ptrace_access_check`, so none of our LSM hooks fire. See `tests/ebpf_exfil.cpp`.
+
+Refusing new BPF program loads via `lsm/bpf` and rejecting AC startup when memory-reading program types are already present does not work in practice. systemd ships BPF programs that the check would have to refuse (`restrict_filesystems` LSM, cgroup networking and device filters), breaking startup on any normal distribution. Whitelisting by name or hash does not help: a root attacker can replace the trusted system binaries (e.g., systemd) with versions whose embedded BPF programs perform the read.
+
+The workable direction is bytecode-level analysis of every BPF program at load time and at AC startup. Inspect each program's instructions and BTF for calls to helpers that can read another task's memory (`bpf_copy_from_user_task`, `bpf_probe_read_user_*`, `bpf_copy_from_user_task_str`, and future additions) and refuse any program that uses them against an arbitrary task argument. This is closer to antivirus-style validation than kernel trust: the trust boundary moves from the kernel itself to the kernel plus this validator.
+
+Not implemented in this project.
+
 ## Notes
 
 This framing follows common anti-cheat taxonomies that separate client tampering from network, server, and real-world cheating, and matches the industry trend of using prevention-first client integrity plus platform trust anchors such as Secure Boot and TPM-backed signals.
