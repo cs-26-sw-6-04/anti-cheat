@@ -88,3 +88,28 @@ TEST_CASE("proc enforcer blocks open of /proc/<pid>/environ",
       .verify_success = [](target &, const attack_result &) {},
   });
 }
+
+/* Per-thread alias: /proc/<pid>/task/<tid>/{status,cmdline,environ} exposes the
+ * same content as /proc/<pid>/<file>. The proc enforcer dentry walk requires
+ * grandparent == "proc", but for these paths the grandparent is "task" — so
+ * the enforcer never fires. For a single-threaded target tid == pid. */
+TEST_CASE("proc enforcer blocks open of /proc/<pid>/task/<tid>/cmdline",
+          "[proc][task][cmdline]") {
+  run_scenario({
+      .target = targets::flag_secret(),
+      .attack = [](const target_info &info) -> int {
+        char path[80];
+        std::snprintf(path, sizeof(path), "/proc/%u/task/%u/cmdline",
+                      info.pid, info.pid);
+        int fd = open(path, O_RDONLY);
+        if (fd < 0) {
+          fprintf(stderr, "open(%s): %s\n", path, std::strerror(errno));
+          return 1;
+        }
+        close(fd);
+        return 0;
+      },
+      .expect_enforcer = AC_ENF_PROC,
+      .verify_success = [](target &, const attack_result &) {},
+  });
+}
