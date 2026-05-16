@@ -27,4 +27,12 @@ target_factory flag_secret_nested();
  * subtree registered (selfprotect still handles the loader pid via rodata). */
 target_factory ac_self();
 
+/* Two-level target where the *intermediate* (info.root_pid) doubles as the
+ * attacker: it forks a grandchild victim (info.pid) holding the secret, then
+ * on the release() byte issues process_vm_readv against the grandchild and
+ * reports the bytes via the FLAG line. Both attacker and victim live inside
+ * the protected subtree, so this is the in-subtree scenario the memory
+ * enforcer must NOT block (§3.1 is about external attackers). */
+target_factory flag_secret_subtree_attacker();
+
 } // namespace ac::targets
