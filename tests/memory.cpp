@@ -9,9 +9,11 @@
 #include <cstdio>
 #include <cstring>
 
+#include <fcntl.h>
 #include <sys/ptrace.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -104,6 +106,48 @@ TEST_CASE("memory enforcer blocks PTRACE_ATTACH", "[mem][attach]") {
         }
         ptrace(PTRACE_DETACH, info.pid, 0, 0);
         buf[sizeof(buf) - 1] = '\0';
+        fputs(buf, stdout);
+        fflush(stdout);
+        return 0;
+      },
+      .expect_enforcer = AC_ENF_MEMORY,
+      .verify_success =
+          [](target &t, const attack_result &r) {
+            REQUIRE(r.stdout == t.info().flag);
+          },
+  });
+}
+
+/* Exfil channel via /proc/<pid>/mem: open, seek to the known flag address,
+ * read. The cheat-relevant outcome is whether the flag bytes leave the
+ * target's address space, not whether open() returns -1. Under the mem
+ * enforcer the read must not deliver the flag — either the open is denied,
+ * the seek is denied, or the read returns no data. */
+TEST_CASE("memory enforcer blocks /proc/<pid>/mem flag exfil",
+          "[mem][procmem]") {
+  run_scenario({
+      .target = targets::flag_secret(),
+      .attack = [](const target_info &info) -> int {
+        char path[64];
+        std::snprintf(path, sizeof(path), "/proc/%u/mem", info.pid);
+        int fd = open(path, O_RDONLY);
+        if (fd < 0) {
+          fprintf(stderr, "open(%s): %s\n", path, std::strerror(errno));
+          return 1;
+        }
+        char buf[AC_FLAG_SIZE] = {0};
+        if (lseek(fd, static_cast<off_t>(info.addr), SEEK_SET) < 0) {
+          fprintf(stderr, "lseek: %s\n", std::strerror(errno));
+          close(fd);
+          return 1;
+        }
+        ssize_t n = read(fd, buf, std::min(info.len, sizeof(buf) - 1));
+        close(fd);
+        if (n <= 0) {
+          fprintf(stderr, "read: %s\n", std::strerror(errno));
+          return 1;
+        }
+        buf[n] = '\0';
         fputs(buf, stdout);
         fflush(stdout);
         return 0;

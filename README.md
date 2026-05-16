@@ -8,6 +8,17 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 Anti-cheat using libbpf and BPF CO-RE (Compile Once, Run Everywhere).
 
+## Enforcers
+
+All BPF LSM programs live in `src/bpf/` and are loaded as one combined object. See each header for motivation and filter logic.
+
+- `selfprotect.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_SELFPROTECT`. Blocks ptrace/process_vm_*/`/proc/<pid>/mem` against the loader itself.
+- `mem.bpf.h` — `lsm/ptrace_access_check` → `AC_ENF_MEMORY`. Blocks the same operations against any process in the protected subtree.
+- `inject.bpf.h` — `lsm/mmap_file` → `AC_ENF_INJECT`. Blocks anonymous `PROT_EXEC` mmap from inside the subtree (shellcode injection). File-backed `PROT_EXEC` (ld.so library loads) is allowed.
+- `execve.bpf.h` — `lsm/bprm_check_security` → `AC_ENF_EXECVE`. Blocks `exec()` from a descendant of the protected root. The root's own startup exec is exempt.
+
+`/proc/<pid>/{status,cmdline,environ}` are intentionally not enforced: none of them leak game memory content (the §3.1 memory-confidentiality property covers `/proc/<pid>/mem`, which `AC_ENF_MEMORY` already gates), and blocking them would break `ps`, `htop`, `gnome-system-monitor`, and every other tool that scans `/proc`.
+
 ## Notes
 
 `vmlinux.h` is generated automatically from `/sys/kernel/btf/vmlinux`.
