@@ -8,9 +8,7 @@
 
 #include <cstdio>
 #include <cstring>
-#include <stdexcept>
 #include <string>
-#include <system_error>
 
 #include <signal.h>
 #include <sys/mman.h>
@@ -171,67 +169,6 @@ target_factory mmap_exec_self() {
     /* root_pid == pid: the target process is its own subtree root. */
     t.set_root_pid(t.info().pid);
     t.set_flag("mmap_ok"); /* expected flag when no enforcer */
-    return t;
-  };
-}
-
-target_factory exec_child() {
-  return []() {
-    auto t = target::spawn([] {
-      /* Root of the protected subtree. Becomes child subreaper so that the
-       * grandchild stays reachable for the ancestor walk in BPF. */
-      (void)prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
-      (void)prctl(PR_SET_PTRACER, static_cast<unsigned long>(-1), 0, 0, 0);
-
-      /* Print READY immediately. The grandchild will be forked AFTER receiving
-       * the go-signal, so the session can be opened before the exec attempt.
-       * This is the key ordering guarantee: session open -> go-signal -> fork -> exec. */
-      printf("READY %u 0 0\n", (unsigned)getpid());
-      fflush(stdout);
-
-      /* SYNCHRONISATION: block until the test writes the "go" signal byte.
-       * This ensures the session is open before the grandchild is created.
-       * getchar() reads the single byte written by t.release(). */
-      getchar();
-
-      /* Fork the grandchild that will attempt exec. */
-      pid_t gc = fork();
-      if (gc < 0) {
-        while (getchar() != EOF) {
-        }
-        printf("FLAG exec_error\n");
-        fflush(stdout);
-        return 1;
-      }
-
-      if (gc == 0) {
-        /* Grandchild: try to exec /bin/true. The enforcer blocks this when
-         * a session is active, because this process is a descendant of the
-         * protected root (not the root itself). */
-        (void)prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
-        char *const argv[] = {(char *)"/bin/true", nullptr};
-        execvp("/bin/true", argv);
-        /* If we reach here, exec was blocked (EPERM). */
-        _exit(1); /* 1 = exec failed */
-      }
-
-      /* Root: wait for grandchild and report outcome. */
-      int status = 0;
-      waitpid(gc, &status, 0);
-      int gc_exit = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-
-      /* Wait for stop() to close stdin (EOF) before printing FLAG. */
-      while (getchar() != EOF) {
-      }
-
-      /* gc_exit == 0: exec succeeded (no enforcer).
-       * gc_exit != 0: exec was blocked (enforcer active). */
-      printf("FLAG %s\n", gc_exit == 0 ? "exec_ok" : "exec_blocked");
-      fflush(stdout);
-      return gc_exit; /* 0 = attack succeeded; 1 = blocked */
-    });
-    t.set_root_pid(t.info().pid);
-    t.set_flag("exec_ok"); /* expected flag when no enforcer */
     return t;
   };
 }

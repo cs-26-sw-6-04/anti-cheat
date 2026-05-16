@@ -36,13 +36,4 @@ target_factory ac_self();
  * "protected" section: open session first, then t.release(); mmap returns MAP_FAILED (EPERM). */
 target_factory mmap_exec_self();
 
-/* Target forks a grandchild that execs /bin/true. Used by execve enforcer
- * tests. The attack (exec) originates inside the protected subtree (the
- * grandchild, which is a descendant of the root). The root process is the
- * subtree root; the grandchild is the exec'er.
- * SYNCHRONISATION: root reads ONE byte (the "go" signal) from stdin after
- * READY before forking the grandchild. Test must call t.release() after
- * session::open_or_skip() to unblock the fork. */
-target_factory exec_child();
-
 } // namespace ac::targets
