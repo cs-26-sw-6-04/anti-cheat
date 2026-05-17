@@ -20,8 +20,16 @@ struct exec_ctx {
 
 static int exec_child(void *user) {
   struct exec_ctx *c = user;
-  /* ac_spawn_and_protect has already dropped to the real uid and armed
-   * PR_SET_PDEATHSIG in this child. We just exec. */
+
+  /* Drop root before handing control to the user's program. setuid(ruid)
+   * with euid == 0 sets all three (real, effective, saved) uids to ruid;
+   * the program cannot regain root. We never elevated egid or groups
+   * (no setgid bit, no setcap +s) so they already match the caller. */
+  if (setuid(c->real_uid) != 0) {
+    fprintf(stderr, "ac: setuid: %s\n", strerror(errno));
+    return 126;
+  }
+
   execvp(c->argv[0], c->argv);
   fprintf(stderr, "ac: exec '%s': %s\n", c->argv[0], strerror(errno));
   return 127;
