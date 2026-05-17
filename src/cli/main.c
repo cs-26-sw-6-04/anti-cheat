@@ -4,15 +4,12 @@
  * SPDX-License-Identifier: LGPL-2.1-only
  */
 
-#define _GNU_SOURCE
-
 #include "ac.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <grp.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
