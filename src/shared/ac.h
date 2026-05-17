@@ -79,14 +79,23 @@ typedef int (*ac_protected_main_fn)(void *user_data);
  *   1. PR_SET_CHILD_SUBREAPER on the loader so reparented descendants of the
  *      subtree stay reachable for the ancestor walk.
  *   2. fork().
- *   3. Child sets PR_SET_PDEATHSIG(SIGKILL) before doing anything else, so
- *      loader death tears the subtree down (see SCOPE.md "Residual
- *      Weaknesses").
- *   4. Child blocks on the barrier read.
- *   5. Parent calls ac_open with the child's pid as the subtree root.
- *   6. On success, parent releases the barrier; child runs `child_main`.
+ *   3. Child setuids to the loader's real uid (no-op when the loader is not
+ *      setuid). This drops privilege before child_main runs and, critically,
+ *      happens BEFORE the death signal is armed in step 4: commit_creds()
+ *      clears task->pdeath_signal on any fsuid/fsgid change, so a pre-armed
+ *      signal would silently evaporate here.
+ *   4. Child sets PR_SET_PDEATHSIG(SIGKILL) so loader death tears the
+ *      subtree down (see SCOPE.md "Residual Weaknesses").
+ *   5. Child blocks on the barrier read.
+ *   6. Parent calls ac_open with the child's pid as the subtree root.
+ *   7. On success, parent releases the barrier; child runs `child_main`.
  *      On failure, parent closes the barrier write end (child gets EOF and
  *      exits) and reaps it before returning the error.
+ *
+ * `child_main` therefore runs with the loader's real uid and with the loader
+ * death signal armed; it should exec / run the protected program directly
+ * without further setuid calls (any later cred change re-clears the death
+ * signal).
  *
  * On success `*out` is a live session, `*out_pid` (if non-null) receives the
  * protected root's pid, and the caller is responsible for `ac_close` and for

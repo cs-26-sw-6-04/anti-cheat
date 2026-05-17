@@ -266,9 +266,27 @@ int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
   }
 
   if (pid == 0) {
-    /* Bind life to the loader BEFORE running anything else. If the loader is
-     * already gone here, the kernel delivers SIGKILL on the next signal-check
-     * boundary and we never reach child_main. */
+    /* Drop to the loader's real uid before arming PR_SET_PDEATHSIG. The
+     * kernel clears task->pdeath_signal in commit_creds() whenever fsuid
+     * or fsgid changes, as a defense against pre-arming a death signal
+     * before a setuid exec. So the death signal must be set AFTER the
+     * cred change, not before, or it silently evaporates and the SCOPE.md
+     * invariant ("loader dead => protected root dead") breaks. Doing this
+     * here, in libloader, instead of leaving each child_main to remember
+     * the ordering, keeps the kernel quirk in one place.
+     *
+     * setuid(getuid()) collapses to a no-op when the loader was not
+     * setuid (real == effective, e.g. tests run via sudo): no privilege
+     * change, no pdeath_signal clear, no behaviour change. When the
+     * loader IS setuid root (the cli case), this drops real, effective,
+     * and saved uids to the invoking user, so child_main runs without
+     * inherited root. */
+    if (setuid(getuid()) != 0)
+      _exit(126);
+
+    /* Bind life to the loader. If the loader is already gone here the
+     * kernel delivers SIGKILL on the next signal-check boundary and we
+     * never reach child_main. */
     (void)prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
     close(barrier[1]);
 

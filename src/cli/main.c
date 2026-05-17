@@ -19,7 +19,6 @@
 
 struct exec_ctx {
   char **argv; /* NULL-terminated; argv[0] is the program. */
-  uid_t real_uid;
 };
 
 static int exec_child(void *user) {
@@ -97,7 +96,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  struct exec_ctx ctx = {.argv = &argv[1], .real_uid = getuid()};
+  struct exec_ctx ctx = {.argv = &argv[1]};
 
   struct ac_session *s = NULL;
   __u32 pid = 0;
