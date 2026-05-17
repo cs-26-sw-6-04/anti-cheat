@@ -7,6 +7,7 @@
 #include <cerrno>
 
 #include <signal.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -108,4 +109,94 @@ TEST_CASE("ac_poll returns -ESRCH after the protected root dies",
   ac_close(s);
   int status;
   (void)waitpid((pid_t)pid, &status, 0);
+}
+
+TEST_CASE("loader death kills protected root across cred drop",
+          "[api][lifetime][pdeathsig]") {
+  /* Reproduces the cli's setuid-root path. The loader proxy sets real uid
+   * to nobody but keeps effective root for ac_open's BPF privilege; that
+   * way libloader's setuid(getuid()) inside the spawned child performs a
+   * real fsuid change. That is the path that clears task->pdeath_signal
+   * in commit_creds(), and is what broke before the
+   * pdeathsig-after-setuid fix. The test asserts that killing the loader
+   * still kills the protected root: failure here means setuid silently
+   * destroyed pdeathsig because it was armed before the cred change.
+   *
+   * When the test runner is itself just root (real == effective == 0),
+   * libloader's setuid(getuid()) is a no-op and the kernel does not run
+   * the fsuid-change path, so this test would not exercise the bug-prone
+   * window. Forcing real != effective here is the whole point. */
+
+  if (geteuid() != 0) {
+    SKIP("requires root (BPF load + setresuid)");
+  }
+
+  int pid_pipe[2];
+  REQUIRE(pipe(pid_pipe) == 0);
+
+  pid_t loader = fork();
+  REQUIRE(loader >= 0);
+
+  if (loader == 0) {
+    close(pid_pipe[0]);
+    /* Make real uid != effective uid without dropping caps: euid stays 0,
+     * so commit_creds() does not change fsuid here and we keep CAP_BPF /
+     * CAP_SYS_ADMIN to load programs. The libloader's setuid(getuid()) in
+     * the spawned grandchild will then drop euid 0 -> 65534 and trigger
+     * the fsuid-change codepath we want to exercise. */
+    if (setresuid(/*ruid=*/65534, /*euid=*/0, /*suid=*/0) != 0)
+      _exit(70);
+
+    ac_session *s = nullptr;
+    __u32 pid = 0;
+    int err = ac_spawn_and_protect(
+        &s, &pid, [](void *) -> int { pause(); return 0; }, nullptr);
+
+    if (err != 0) {
+      __u32 zero = 0;
+      (void)write(pid_pipe[1], &zero, sizeof zero);
+      _exit(err == -EPERM || err == -EACCES ? 77 : 1);
+    }
+    (void)write(pid_pipe[1], &pid, sizeof pid);
+    close(pid_pipe[1]);
+    pause();
+    _exit(0);
+  }
+
+  close(pid_pipe[1]);
+
+  __u32 protected_pid = 0;
+  ssize_t r = read(pid_pipe[0], &protected_pid, sizeof protected_pid);
+  close(pid_pipe[0]);
+  REQUIRE(r == (ssize_t)sizeof protected_pid);
+
+  if (protected_pid == 0) {
+    int s_status = 0;
+    (void)waitpid(loader, &s_status, 0);
+    if (WIFEXITED(s_status) && WEXITSTATUS(s_status) == 77)
+      SKIP("insufficient privileges to load BPF");
+    FAIL("loader proxy failed before reporting protected pid");
+  }
+
+  /* Sanity: protected child is alive before we touch the loader. */
+  REQUIRE(kill((pid_t)protected_pid, 0) == 0);
+
+  /* Take the loader out from under it. PR_SET_PDEATHSIG(SIGKILL) on the
+   * protected child must fire and take it out as well. */
+  REQUIRE(kill(loader, SIGKILL) == 0);
+  int loader_status = 0;
+  (void)waitpid(loader, &loader_status, 0);
+
+  /* We are not the protected child's parent, so wait by polling: kill(2)
+   * with sig 0 returns -ESRCH once the pid is fully gone (zombie reaped
+   * by the subreaper that inherited it). */
+  bool dead = false;
+  for (int i = 0; i < 200; i++) {
+    if (kill((pid_t)protected_pid, 0) == -1 && errno == ESRCH) {
+      dead = true;
+      break;
+    }
+    usleep(10 * 1000); /* up to 2s total. */
+  }
+  REQUIRE(dead);
 }

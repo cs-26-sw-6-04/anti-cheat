@@ -58,6 +58,15 @@ struct scenario_spec {
   attacker_fn attack;
   ac_enforcer expect_enforcer;
   verify_success_fn verify_success;
+  /* If set, the attacker's stderr in the "protected" SECTION must
+   * contain this substring. Pins which syscall the enforcer denied so a
+   * regression that moves the block to a later step does not pass. */
+  std::string protected_stderr_contains;
+  /* If set, the no-enforcer SECTION is SKIPped (instead of failed) when
+   * the attacker exits non-zero with this substring in stderr. For
+   * upstream libraries whose injection step works in some build
+   * configurations and not others. */
+  std::string flaky_skip_no_enforcer_stderr;
 };
 
 /* Runs "attack succeeds (no enforcer)" + "protected" passes as Catch2 SECTIONs.
