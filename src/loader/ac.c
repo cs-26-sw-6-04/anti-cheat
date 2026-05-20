@@ -13,6 +13,7 @@
 #include <bpf/libbpf.h>
 
 #include <errno.h>
+#include <grp.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -261,6 +262,13 @@ int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
   }
 
   if (pid == 0) {
+    /* Drop supplementary groups while we still have CAP_SETGID (i.e. before
+     * setuid below clears the cap set). Without this the protected target
+     * inherits whatever supplementary groups the loader was launched with
+     * and gets file-access rights it never needed. */
+    if (setgroups(0, NULL) != 0)
+      _exit(126);
+
     /* Drop to the loader's real uid before arming PR_SET_PDEATHSIG. The
      * kernel clears task->pdeath_signal in commit_creds() whenever fsuid
      * or fsgid changes, as a defense against pre-arming a death signal
