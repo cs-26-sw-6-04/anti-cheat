@@ -248,11 +248,6 @@ int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
   if (!out || !child_main)
     return -EINVAL;
 
-  /* Set subreaper before fork so the child (and any of its descendants that
-   * outlive intermediate parents) is guaranteed to reparent into us, keeping
-   * the BPF ancestor walk from escaping the subtree. Idempotent. */
-  (void)prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
-
   int barrier[2];
   if (pipe(barrier) != 0)
     return errno ? -errno : -EIO;
@@ -288,6 +283,20 @@ int ac_spawn_and_protect(struct ac_session **out, __u32 *out_pid,
      * kernel delivers SIGKILL on the next signal-check boundary and we
      * never reach child_main. */
     (void)prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+    /* Subreaper on the protected root, not the loader. Two real-world
+     * patterns rely on this:
+     *   - wine launches helpers (and the actual game binary) via wineserver,
+     *     which double-forks them so they detach from their caller;
+     *   - out-of-process crash reporters (Chromium crashpad_handler, the
+     *     Fabric CrashAssistant mod) do their own setsid + double-fork so
+     *     they outlive a parent crash.
+     * In both cases the orphan reparents to the nearest live subreaper
+     * ancestor. If that's the loader, the BPF ancestor walk in
+     * is_in_protected_subtree never reaches protected_root_pid and the
+     * detached process runs outside enforcement. Setting it here makes
+     * those orphans reparent to *us*, so they stay inside the subtree. The
+     * setting survives execve, so the whole runtime stack inherits it. */
+    (void)prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
     close(barrier[1]);
 
     /* Block until the parent finishes ac_open. A successful 1-byte read means

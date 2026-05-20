@@ -51,6 +51,39 @@ TEST_CASE("memory enforcer blocks process_vm_readv against descendant",
   });
 }
 
+/* Crash reporters (Chromium crashpad_handler, the Fabric CrashAssistant mod)
+ * and wineserver's exec path use setsid + double-fork to detach the helper
+ * from its caller. The orphan reparents to the nearest live subreaper,
+ * which is protected_root after the post-fork prctl in ac_spawn_and_protect.
+ * Without that placement, the helper would land at the loader (or PID 1)
+ * and is_in_protected_subtree would treat it as external. */
+TEST_CASE("memory enforcer blocks process_vm_readv against detached helper",
+          "[mem][subtree][detached]") {
+  run_scenario({
+      .target = targets::flag_secret_detached(),
+      .attack =
+          [](const target_info &info) -> int {
+        char buf[AC_FLAG_SIZE] = {0};
+        iovec local{buf, sizeof(buf)};
+        iovec remote{reinterpret_cast<void *>(info.addr),
+                     std::min(info.len, sizeof(buf))};
+        if (process_vm_readv(info.pid, &local, 1, &remote, 1, 0) < 0) {
+          fprintf(stderr, "process_vm_readv: %s\n", std::strerror(errno));
+          return 1;
+        }
+        buf[sizeof(buf) - 1] = '\0';
+        fputs(buf, stdout);
+        fflush(stdout);
+        return 0;
+      },
+      .expect_enforcer = AC_ENF_MEMORY,
+      .verify_success =
+          [](target &t, const attack_result &r) {
+            REQUIRE(r.stdout == t.info().flag);
+          },
+  });
+}
+
 TEST_CASE("memory enforcer blocks PTRACE_ATTACH against descendant",
           "[mem][subtree]") {
   run_scenario({

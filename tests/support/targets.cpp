@@ -134,6 +134,100 @@ target_factory ac_self() {
   };
 }
 
+target_factory flag_secret_detached() {
+  return []() {
+    std::string initial = random_token();
+    auto t = target::spawn([initial] {
+      /* The subtree root mimics the loader's post-fork prctl: subreaper on
+       * the protected root so a setsid + double-fork orphan reparents back
+       * to us, not past us. Without this the grandchild ends up as a child
+       * of the test harness (or PID 1) and is_in_protected_subtree never
+       * matches. */
+      (void)prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+      (void)prctl(PR_SET_PTRACER, static_cast<unsigned long>(-1), 0, 0, 0);
+
+      int announce[2];
+      if (pipe(announce) != 0) {
+        fprintf(stderr, "detached: pipe: %s\n", std::strerror(errno));
+        return 1;
+      }
+
+      pid_t intermediate = fork();
+      if (intermediate < 0) {
+        fprintf(stderr, "detached: fork: %s\n", std::strerror(errno));
+        return 1;
+      }
+
+      if (intermediate == 0) {
+        /* The intermediate plays the role of the helper-launcher: setsid,
+         * fork the long-lived grandchild, exit. */
+        close(announce[0]);
+        setsid();
+
+        pid_t grandchild = fork();
+        if (grandchild < 0) {
+          fprintf(stderr, "detached: inner fork: %s\n", std::strerror(errno));
+          _exit(1);
+        }
+
+        if (grandchild == 0) {
+          (void)prctl(PR_SET_PTRACER, static_cast<unsigned long>(-1), 0, 0, 0);
+
+          static char secret[AC_FLAG_SIZE];
+          std::memset(secret, 0, sizeof(secret));
+          std::memcpy(secret, initial.data(),
+                      std::min(initial.size(), sizeof(secret) - 1));
+
+          dprintf(announce[1], "%u %llx %zu\n", (unsigned)getpid(),
+                  (unsigned long long)(uintptr_t)secret, sizeof(secret));
+          close(announce[1]);
+
+          /* Block on stdin like the other targets so the harness controls
+           * lifetime via stop(). */
+          while (getchar() != EOF) {
+          }
+          _exit(0);
+        }
+
+        /* The intermediate exits immediately; its grandchild is now
+         * an orphan and reparents to the nearest live subreaper. */
+        close(announce[1]);
+        _exit(0);
+      }
+
+      close(announce[1]);
+      /* Reap the intermediate so the grandchild's reparent target is settled
+       * before we announce. */
+      (void)waitpid(intermediate, nullptr, 0);
+
+      FILE *f = fdopen(announce[0], "r");
+      unsigned int g_pid = 0;
+      unsigned long long g_addr = 0;
+      size_t g_len = 0;
+      int n = f ? fscanf(f, "%u %llx %zu", &g_pid, &g_addr, &g_len) : 0;
+      if (f)
+        fclose(f);
+      if (n != 3)
+        return 1;
+
+      printf("READY %u %llx %zu\n", g_pid, g_addr, g_len);
+      fflush(stdout);
+
+      /* Stay alive until stop() so the subreaper relationship holds for the
+       * duration of the test. */
+      while (getchar() != EOF) {
+      }
+      return 0;
+    });
+    t.set_flag(initial);
+    /* info.pid is the grandchild (announced via READY). The intermediate
+     * has exited; the grandchild's real_parent is the subtree root via
+     * the subreaper relationship. */
+    t.set_root_pid(t.spawned_pid());
+    return t;
+  };
+}
+
 target_factory flag_secret_subtree_attacker() {
   return []() {
     std::string initial = random_token();

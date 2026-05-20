@@ -54,12 +54,6 @@ Tradeoff: `/proc/<pid>/{maps,smaps,auxv,environ}` become readable by any local u
 
 Not whitelisting any binary, not trusting any caller identity. Just being honest about which procfs path is actually the exfil channel.
 
-## Known Limitation: detached crash-reporter helpers
-
-Out-of-process crash reporters detach from their parent (typically by `setsid()` + double-fork) so they outlive a crash and can capture post-mortem state. Once detached, the helper's `real_parent` no longer climbs back into the subtree, so the ancestor walk treats it as external and `AC_ENF_MEMORY` denies its reads. Hit in the wild by Chromium's `crashpad_handler` and the Fabric `CrashAssistant` mod. The protected app keeps running; what's lost is the helper's post-mortem when it does crash.
-
-The natural workaround (tracking subtree membership in a BPF hash map populated at `sched_process_fork`) was tried and rejected: the map is writable by any `CAP_BPF` holder via `BPF_MAP_GET_FD_BY_ID` + `BPF_MAP_UPDATE_ELEM`, which downgrades policy state from kernel-owned (`task->real_parent`, only writable by a kernel module) to userspace-tamperable. That fails the trust model in `SCOPE.md`. No clean fix yet.
-
 ## Notes
 
 `vmlinux.h` is generated automatically from `/sys/kernel/btf/vmlinux`.

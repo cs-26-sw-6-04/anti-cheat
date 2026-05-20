@@ -65,7 +65,7 @@ The design closes this by binding the protected process's life to the loader's:
 
 Residual micro-race: between the loader's fd-table teardown dropping the BPF links and the protected root actually processing its `SIGKILL`, there is a brief window (microseconds) where enforcement is off but the target is still running. An attacker who can time a syscall into that window could read or write the target's memory. Closing this would require either making the loader unkillable (not possible outside PID 1) or moving enforcement into a kernel module (out of scope per the trusted base).
 
-Descendants of the protected root that outlive it are not covered by `PR_SET_PDEATHSIG` and are reparented to the loader (via `PR_SET_CHILD_SUBREAPER`) before exiting with it. They lose enforcement when the loader dies, same as above.
+The protected root sets `PR_SET_CHILD_SUBREAPER` on itself before exec. This keeps orphans of a daemonized intermediate (wineserver's double-forked game process, a `setsid` + double-fork crash-reporter helper) reparented onto the protected root rather than escaping past it; the BPF ancestor walk in `mem.bpf.h` would otherwise treat those processes as external and deny their reads of the game. Descendants are not covered by `PR_SET_PDEATHSIG` and may outlive the protected root; once the root dies the loader tears the session down and they lose enforcement, same as above.
 
 Out-of-band mitigations (server-side liveness checks, service supervision, heartbeat-gated sessions) are expected to detect loader absence; they are orthogonal to the in-kernel protections described here.
 

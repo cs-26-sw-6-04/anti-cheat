@@ -22,6 +22,14 @@ target_factory flag_secret();
  * descendants of the declared root, not just the root itself. */
 target_factory flag_secret_nested();
 
+/* Detached helper: the subtree root (info.root_pid) does the setsid + double
+ * fork dance that crash reporters (Chromium crashpad_handler, the Fabric
+ * CrashAssistant mod) and wineserver's exec path use to outlive their
+ * caller. The intermediate exits; the grandchild (info.pid) holds the
+ * secret. Without PR_SET_CHILD_SUBREAPER on the subtree root the grandchild
+ * would reparent past it, escaping is_in_protected_subtree. */
+target_factory flag_secret_detached();
+
 /* "Target" is the current process, used by self-protect tests where AC's own
  * pid is the victim. No fork. info.root_pid is 0 so mem/ptrace run with no
  * subtree registered (selfprotect still handles the loader pid via rodata). */
